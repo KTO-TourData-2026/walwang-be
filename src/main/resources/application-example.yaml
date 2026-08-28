@@ -1,0 +1,41 @@
+# application.yaml 템플릿.
+#
+# 이 파일을 같은 폴더에 application.yaml 로 복사한 뒤 값을 채워 넣는다.
+# application.yaml 은 비밀정보라 .gitignore 로 제외되어 있으므로 커밋하지 않는다.
+#
+#   cp src/main/resources/application-example.yaml src/main/resources/application.yaml
+
+spring:
+  application:
+    name: walwang_BE
+
+  datasource:
+    # Supabase 사용 시: 대시보드 > Settings > Database > Connection string > Session pooler
+    # Direct connection(db.xxx.supabase.co)은 IPv6 전용이라 연결되지 않는다.
+    # username 이 postgres 가 아니라 postgres.{프로젝트ref} 인 점에 주의.
+    url: jdbc:postgresql://{호스트}:5432/postgres
+    username: { 사용자명 }
+    password: "{비밀번호}"
+
+  jpa:
+    hibernate:
+      # 개발 초기에만 create. 데이터를 유지해야 하면 update, 운영은 validate.
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    # database-platform 은 지정하지 않는다.
+    # 연결된 DB를 보고 Hibernate 가 알아서 고른다.
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # password: "{비밀번호}"   # 관리형 Redis 사용 시
+
+jwt:
+  # RSA 키는 저장소에 없으므로 각자 생성해야 한다. README 참고.
+  private-key: classpath:keys/private_key.pem
+  public-key: classpath:keys/public_key.pem
+  access-token-validity: 3600        # 초 · 1시간
+  refresh-token-validity: 1209600    # 초 · 14일
