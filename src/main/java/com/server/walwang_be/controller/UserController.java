@@ -8,6 +8,7 @@ import com.server.walwang_be.dto.TokenResponse;
 import com.server.walwang_be.dto.UserPatchRequest;
 import com.server.walwang_be.security.BearerTokenResolver;
 import com.server.walwang_be.service.UserService;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -69,8 +70,9 @@ public class UserController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-                                       @Valid @RequestBody TokenRequest request) {
+    public ResponseEntity<Void> logout(
+            @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @Valid @RequestBody TokenRequest request) {
         userService.logout(BearerTokenResolver.resolve(authorization), request.refreshToken());
         return ResponseEntity.ok().build();
     }
@@ -85,7 +87,7 @@ public class UserController {
     @PatchMapping("/me")
     public ResponseEntity<RefreshTokenResponse> updateMe(
             @AuthenticationPrincipal Long userId,
-            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @Valid @RequestBody UserPatchRequest request) {
         TokenResponse tokens = userService.updateMe(
                 userId, BearerTokenResolver.resolve(authorization), request);
