@@ -39,7 +39,7 @@ public class SwaggerConfig {
     private Info apiInfo(){
         return new Info()
                 .title("CLBACK API")
-                .description("TalkUp 종프1")
+                .description("왈왕 TripPaw")
                 .version("1.0.0");
     }
 }
