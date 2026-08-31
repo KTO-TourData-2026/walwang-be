@@ -1,9 +1,11 @@
 package com.server.walwang_be.controller;
 
+import com.server.walwang_be.client.ReceiptOcrClient;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -28,6 +30,30 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("message", e.getMessage()));
+    }
+
+    /** 영수증 토큰 만료·불일치, 남의 리뷰 삭제 시도 등 → 403. */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(AccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("message", e.getMessage()));
+    }
+
+    /**
+     * 영수증에서 글자를 읽지 못함 → 422.
+     * 400과 나누는 이유는 대응이 다르기 때문이다 — 파일은 멀쩡하니 다시 찍으면 된다.
+     */
+    @ExceptionHandler(ReceiptOcrClient.OcrUnreadableException.class)
+    public ResponseEntity<Map<String, String>> handleOcrUnreadable(ReceiptOcrClient.OcrUnreadableException e) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(Map.of("message", e.getMessage()));
+    }
+
+    /** OCR 서버 장애·타임아웃 → 503. 사용자 잘못이 아니라 잠시 후 재시도할 일이다. */
+    @ExceptionHandler(ReceiptOcrClient.OcrUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleOcrUnavailable(ReceiptOcrClient.OcrUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("message", "영수증 인증 서버가 응답하지 않습니다. 잠시 후 다시 시도해 주세요."));
     }
 
     /** 없는 가게·리뷰 등 대상이 존재하지 않음 → 404. */

@@ -90,6 +90,16 @@ public class Store {
     }
 
     /**
+     * store_size_status 합계 캐시를 갱신한다.
+     * 상세 조회에서 매번 집계하지 않으려고 두는 값이라, 리뷰가 반영될 때 함께 움직여야 한다.
+     */
+    public void applyRecomputed(int possibleCount, int impossibleCount, Instant lastVerifiedAt) {
+        this.possibleCount = possibleCount;
+        this.impossibleCount = impossibleCount;
+        this.lastVerifiedAt = lastVerifiedAt;
+    }
+
+    /**
      * JTS Coordinate는 (x, y) 순서라 경도가 먼저다.
      * 위도를 먼저 넣으면 조용히 엉뚱한 좌표가 되므로 반드시 이 메서드를 거친다.
      */

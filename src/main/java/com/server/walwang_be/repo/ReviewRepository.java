@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     /**
@@ -17,4 +19,12 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
      */
     @EntityGraph(attributePaths = "user")
     Page<Review> findByStore_StoreIdOrderByCreatedAtDesc(Long storeId, Pageable pageable);
+
+    /**
+     * 점수·태그 재집계용. 페이징이 없으니 태그까지 한 번에 끌어와도 안전하다.
+     * 가게 하나에 달린 리뷰 전부를 읽으므로, 리뷰가 아주 많아지면
+     * 집계 쿼리로 바꿔야 한다.
+     */
+    @EntityGraph(attributePaths = "tags")
+    List<Review> findByStore_StoreId(Long storeId);
 }

@@ -56,10 +56,14 @@ public class Review {
     @Column(name = "dog_size", nullable = false, length = 20)
     private DogSize dogSize;
 
-    @Column(name = "photo_url", nullable = false, length = 500)
+    /**
+     * 사진은 선택이다 — 거절당한 리뷰는 찍을 사진 자체가 없다.
+     * photoUrl은 EXIF를 지운 원본, thumbnailUrl은 목록용으로 줄인 사본이며 둘은 항상 함께 존재한다.
+     */
+    @Column(name = "photo_url", length = 500)
     private String photoUrl;
 
-    @Column(name = "thumbnail_url", nullable = false, length = 500)
+    @Column(name = "thumbnail_url", length = 500)
     private String thumbnailUrl;
 
     @Column(length = 1000)

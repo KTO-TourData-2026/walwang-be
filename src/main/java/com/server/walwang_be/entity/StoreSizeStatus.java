@@ -72,6 +72,24 @@ public class StoreSizeStatus {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * 리뷰를 다시 집계한 결과로 갈아끼운다.
+     *
+     * 증감이 아니라 덮어쓰기인 이유는 리뷰 삭제 때문이다 — 시간가중 점수는
+     * 더한 값을 그대로 빼도 원래대로 돌아오지 않아서, 지울 때마다 오차가 쌓인다.
+     * 전체를 다시 세면 몇 번을 등록하고 지우든 같은 결과가 나온다.
+     */
+    public void applyRecomputed(double possibleScore, double impossibleScore,
+                                int possibleCount, int impossibleCount,
+                                Instant lastVerifiedAt) {
+        this.possibleScore = possibleScore;
+        this.impossibleScore = impossibleScore;
+        this.possibleCount = possibleCount;
+        this.impossibleCount = impossibleCount;
+        this.lastVerifiedAt = lastVerifiedAt;
+        this.updatedAt = Instant.now();
+    }
+
     /** 저장된 값이 아니라 매번 계산한 등급. */
     public AvailabilityStatus status() {
         return AvailabilityStatus.of(possibleScore, impossibleScore);

@@ -2,10 +2,13 @@ package com.server.walwang_be.entity;
 
 /**
  * 가게 태그. 선택형이라 마스터 테이블 대신 enum으로 고정한다.
- * DB에는 enum 이름(WIDE_YARD)이 저장되고, 응답에는 label(넓은마당)이 나간다 —
- * 표기가 바뀌어도 저장된 데이터는 그대로 둘 수 있다.
  *
- * label에는 '#'을 넣지 않는다. 해시태그로 보일지는 화면이 정할 일이다.
+ * 프론트와 주고받는 식별자도 이 상수 이름(code)이다. 별도의 숫자 id를 두지 않는 이유는
+ * DB에 저장되는 값이 이미 이 이름이기 때문이다 — 번호를 끼워 넣으면 같은 개념에
+ * 식별자가 둘이 되고, 그 둘을 잇는 표가 어긋나도 아무도 알아채지 못한다.
+ *
+ * label(넓은마당)은 화면에 보여줄 글자일 뿐이라 자유롭게 바꿔도 저장된 데이터에 영향이 없다.
+ * '#'은 넣지 않는다. 해시태그로 보일지는 화면이 정할 일이다.
  */
 public enum StoreTag {
 
@@ -38,6 +41,11 @@ public enum StoreTag {
     StoreTag(String label, TagCategory category) {
         this.label = label;
         this.category = category;
+    }
+
+    /** 프론트와 주고받는 식별자. 상수 이름 그대로다. */
+    public String code() {
+        return name();
     }
 
     public String label() {

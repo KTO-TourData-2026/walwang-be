@@ -48,4 +48,9 @@ public class StoreTagCount {
         this.store = store;
         this.tag = tag;
     }
+
+    /** 리뷰를 다시 집계한 개수로 갈아끼운다. */
+    public void applyRecomputed(int count) {
+        this.count = count;
+    }
 }
