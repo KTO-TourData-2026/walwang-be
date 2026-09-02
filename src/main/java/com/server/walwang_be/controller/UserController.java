@@ -1,6 +1,7 @@
 package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.LoginRequest;
+import com.server.walwang_be.dto.CourseRenameRequest;
 import com.server.walwang_be.dto.MyReviewResponse;
 import com.server.walwang_be.dto.PassportDetailResponse;
 import com.server.walwang_be.dto.PassportSummaryResponse;
@@ -8,10 +9,12 @@ import com.server.walwang_be.dto.RefreshTokenResponse;
 import com.server.walwang_be.dto.SignUpRequest;
 import com.server.walwang_be.dto.TokenRequest;
 import com.server.walwang_be.dto.TokenResponse;
+import com.server.walwang_be.dto.SavedCourseListResponse;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.UserPatchRequest;
 import com.server.walwang_be.dto.UserProfileResponse;
 import com.server.walwang_be.security.BearerTokenResolver;
+import com.server.walwang_be.service.CourseService;
 import com.server.walwang_be.service.PassportService;
 import com.server.walwang_be.service.StoreService;
 import com.server.walwang_be.service.UserService;
@@ -53,6 +56,7 @@ public class UserController {
     private final UserWithdrawalService userWithdrawalService;
     private final PassportService passportService;
     private final StoreService storeService;
+    private final CourseService courseService;
 
     @PostMapping("/signUp")
     public ResponseEntity<Void> signUp(@Valid @RequestBody SignUpRequest request) {
@@ -147,6 +151,25 @@ public class UserController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(storeService.findSavedStores(userId, page, size));
+    }
+
+    /** 저장한 코스 목록. 카드에 필요한 것만 담고 경로선은 빼서 내려준다. */
+    @GetMapping("/me/saved-courses")
+    public ResponseEntity<SavedCourseListResponse> findMySavedCourses(
+            @AuthenticationPrincipal UUID userId,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(new SavedCourseListResponse(
+                courseService.findMyCourses(userId, demo)));
+    }
+
+    /** 저장한 코스 제목 수정. 남의 코스면 403, 없으면 404. */
+    @PatchMapping("/me/saved-courses/{courseId}")
+    public ResponseEntity<Void> renameSavedCourse(
+            @AuthenticationPrincipal UUID userId,
+            @PathVariable UUID courseId,
+            @Valid @RequestBody CourseRenameRequest request) {
+        courseService.rename(userId, courseId, request.title());
+        return ResponseEntity.ok().build();
     }
 
     /** 여권 미리보기. 최신 도장부터. */

@@ -116,6 +116,11 @@ public class SavedCourse {
         this.createdAt = Instant.now();
     }
 
+    /** 제목만 바꾼다. 코스 내용(가게·경로·거리)은 저장된 그대로 둔다. */
+    public void rename(String title) {
+        this.title = title;
+    }
+
     /** 방문 순서는 넘겨받은 목록의 순서를 그대로 따른다. */
     public void addStore(Store store, int arrivalOrder) {
         stores.add(SavedCourseStore.builder()

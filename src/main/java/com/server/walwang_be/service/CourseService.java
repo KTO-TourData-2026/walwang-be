@@ -4,6 +4,7 @@ import com.server.walwang_be.dto.CourseRecommendRequest;
 import com.server.walwang_be.dto.CourseResponse;
 import com.server.walwang_be.dto.CourseSaveRequest;
 import com.server.walwang_be.dto.CourseStoreResponse;
+import com.server.walwang_be.dto.SavedCourseSummaryResponse;
 import com.server.walwang_be.entity.AvailabilityStatus;
 import com.server.walwang_be.entity.CourseDuration;
 import com.server.walwang_be.entity.CoursePurpose;
@@ -16,6 +17,7 @@ import com.server.walwang_be.entity.StoreTagCount;
 import com.server.walwang_be.repo.SavedCourseRepository;
 import com.server.walwang_be.repo.StoreRepository;
 import com.server.walwang_be.repo.StoreSizeStatusRepository;
+import com.server.walwang_be.client.TmapClient;
 import com.server.walwang_be.repo.PlaceEmbeddingRepository;
 import com.server.walwang_be.repo.StoreTagCountRepository;
 import com.server.walwang_be.repo.UserRepository;
@@ -30,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -58,6 +61,7 @@ public class CourseService {
     private final SavedCourseRepository savedCourseRepository;
     private final UserRepository userRepository;
     private final PlaceEmbeddingRepository placeEmbeddingRepository;
+    private final TmapClient tmapClient;
 
     /**
      * 코스 추천.
@@ -99,7 +103,7 @@ public class CourseService {
 
         candidates = rankCandidates(candidates, demo);
         List<Store> route = buildRoute(candidates, request.lat(), request.lng(), duration.maxStores());
-        List<List<Double>> walkPath = toWalkPath(route, request.lat(), request.lng());
+        Walk walk = walk(route, request.lat(), request.lng());
 
         return new CourseResponse(
                 null,
@@ -107,9 +111,9 @@ public class CourseService {
                 request.dogSize(),
                 request.purposes(),
                 duration,
-                (int) Math.round(totalDistance(walkPath)),
-                totalDuration(totalDistance(walkPath), route.size()),
-                walkPath,
+                walk.distanceMeters(),
+                walk.durationMinutes(),
+                walk.path(),
                 null,
                 relaxed,
                 toStoreResponses(route, statusByStore, loadTags(route), demo));
@@ -160,6 +164,19 @@ public class CourseService {
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
                 toStoreResponses(stores, statusByStore, loadTags(stores), demo));
+    }
+
+    /** 저장한 코스 목록. 최근에 저장한 것부터. */
+    public List<SavedCourseSummaryResponse> findMyCourses(UUID userId, boolean demo) {
+        return savedCourseRepository.findByUser_UserIdOrderByCreatedAtDesc(userId).stream()
+                .map(course -> SavedCourseSummaryResponse.of(course, demo))
+                .toList();
+    }
+
+    /** 제목만 바꾼다. 남의 코스면 403, 없으면 404. */
+    @Transactional
+    public void rename(UUID userId, UUID courseId, String title) {
+        loadOwnedCourse(userId, courseId).rename(title);
     }
 
     @Transactional
@@ -270,6 +287,39 @@ public class CourseService {
             currentLng = nearest.getLng();
         }
         return route;
+    }
+
+    /**
+     * 실제 보행 경로. 티맵이 알려준 길을 쓰고, 못 받으면 직선으로 대신한다.
+     *
+     * 실패해도 코스 자체는 그대로 내보낸다 — 경로선이 안 그려질 뿐이고,
+     * 어디를 갈지는 이미 정해져 있기 때문이다.
+     */
+    private Walk walk(List<Store> route, double lat, double lng) {
+        if (route.isEmpty()) {
+            return new Walk(List.of(), 0, 0);
+        }
+        List<TmapClient.Waypoint> waypoints = new ArrayList<>(route.size() + 1);
+        waypoints.add(new TmapClient.Waypoint("출발지", lat, lng));
+        route.forEach(store -> waypoints.add(
+                new TmapClient.Waypoint(store.getName(), store.getLat(), store.getLng())));
+
+        Optional<TmapClient.WalkRoute> found = tmapClient.walkRoute(waypoints);
+        if (found.isPresent()) {
+            TmapClient.WalkRoute walk = found.get();
+            // 티맵이 준 시간은 걷는 시간뿐이라, 머무는 시간을 더해야 코스 소요시간이 된다.
+            int minutes = (int) Math.round(walk.timeSeconds() / 60.0)
+                    + route.size() * DWELL_MINUTES_PER_STORE;
+            return new Walk(walk.path(), walk.distanceMeters(), minutes);
+        }
+        // 경로선 없이 간다. 거리·시간은 직선 기준 추정으로 채운다.
+        double distance = totalDistance(toWalkPath(route, lat, lng));
+        return new Walk(List.of(), (int) Math.round(distance),
+                totalDuration(distance, route.size()));
+    }
+
+    /** 화면에 그릴 경로와 그 합계. */
+    private record Walk(List<List<Double>> path, int distanceMeters, int durationMinutes) {
     }
 
     /** 지도 중심에서 출발해 가게를 차례로 잇는다. [[위도, 경도], ...] */
