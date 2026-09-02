@@ -50,6 +50,14 @@ public class Store {
     @Column(nullable = false, length = 100)
     private String name;
 
+    /**
+     * 시연용 가명. 목 리뷰를 붙인 채로 보여줄 때만 이 이름을 쓴다 —
+     * 실제 가게에 없던 평판이 붙는 것이라 상호를 그대로 노출할 수 없다.
+     * 내부 매칭·검색은 언제나 name을 쓴다.
+     */
+    @Column(name = "display_name", length = 100)
+    private String displayName;
+
     /** 지도 핀 위치. 반경 검색은 이 컬럼에 ST_DWithin을 건다. */
     @Column(columnDefinition = "geography(Point,4326)", nullable = false)
     private Point geog;
@@ -106,6 +114,11 @@ public class Store {
      */
     public static Point toPoint(double lat, double lng) {
         return GEOMETRY_FACTORY.createPoint(new Coordinate(lng, lat));
+    }
+
+    /** 화면에 내보낼 이름. 시연 모드에서 가명이 있으면 그것을, 아니면 실제 상호를 쓴다. */
+    public String displayName(boolean demo) {
+        return (demo && displayName != null && !displayName.isBlank()) ? displayName : name;
     }
 
     public double getLat() {

@@ -1,5 +1,6 @@
 package com.server.walwang_be.service;
 
+import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.repo.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,80 @@ public class TourStoreMatcher {
      * 마지막에 한 가게에 둘 이상 붙은 건 전부 버린다 — 어느 한쪽은 반드시 틀렸고,
      * 어느 쪽이 맞는지 가릴 근거가 없기 때문이다.
      */
+    /**
+     * 후보를 미리 받아 메모리에서만 맞춘다.
+     *
+     * 지점마다 반경 쿼리를 던지면 항목 수 × 단계 수만큼 왕복이 생긴다 —
+     * 성동구 102건이면 268회라, 원격 DB에서는 그것만으로 5초가 넘는다.
+     * 후보를 한 번 읽어두면 거리 계산은 메모리에서 끝난다.
+     */
+    public StagedResult matchAll(List<TourPoint> points, List<Store> pool) {
+        Map<String, Match> matched = new LinkedHashMap<>();
+        List<Stage> stages = new ArrayList<>();
+
+        List<TourPoint> remaining = new ArrayList<>(points);
+        remaining = runInMemory(stages, "1. 완전 일치 (300m)", remaining, matched,
+                pool, WIDE_RADIUS_METERS, this::byExact);
+        remaining = runInMemory(stages, "2. 접두어 규칙 (300m)", remaining, matched,
+                pool, WIDE_RADIUS_METERS, this::byPrefix);
+        remaining = runInMemory(stages, "3. 유사도 >= 0.6 (30m, 치환+지점명 제거)",
+                remaining, matched, pool, TIGHT_RADIUS_METERS, this::bySimilarity);
+
+        return dropDuplicates(points.size(), stages, matched, remaining);
+    }
+
+    private List<TourPoint> runInMemory(List<Stage> stages, String name,
+                                        List<TourPoint> targets,
+                                        Map<String, Match> matched,
+                                        List<Store> pool, double radius, Rule rule) {
+        List<Pair> hits = new ArrayList<>();
+        List<TourPoint> leftover = new ArrayList<>();
+
+        for (TourPoint point : targets) {
+            List<StoreRepository.NearbyStore> candidates = nearby(pool, point, radius);
+            Optional<Scored> found = rule.apply(point.title(), candidates);
+            if (found.isEmpty()) {
+                leftover.add(point);
+                continue;
+            }
+            Scored scored = found.get();
+            Match match = new Match(scored.store().getStoreId(), scored.store().getExternalId(),
+                    scored.store().getName(), scored.store().getAddress(),
+                    scored.store().getDistance(), candidates.size(), name, scored.similarity());
+
+            matched.put(point.title(), match);
+            hits.add(new Pair(point.title(), match));
+        }
+        stages.add(new Stage(name, hits.size(), matched.size(), hits));
+        return leftover;
+    }
+
+    /** 반경 안의 후보를 가까운 순으로. 쿼리와 같은 순서를 유지해야 규칙이 똑같이 돈다. */
+    private List<StoreRepository.NearbyStore> nearby(List<Store> pool, TourPoint point, double radius) {
+        List<StoreRepository.NearbyStore> found = new ArrayList<>();
+        for (Store store : pool) {
+            double distance = GeoDistance.between(
+                    point.lat(), point.lng(), store.getLat(), store.getLng());
+            if (distance <= radius) {
+                found.add(new InMemoryStore(store.getStoreId(), store.getExternalId(),
+                        store.getName(), store.getAddress(), distance));
+            }
+        }
+        found.sort(Comparator.comparingDouble(StoreRepository.NearbyStore::getDistance));
+        return found;
+    }
+
+    /** 메모리에서 만든 후보. 쿼리 결과와 같은 모양이라 규칙을 그대로 쓴다. */
+    private record InMemoryStore(UUID storeId, String externalId, String name,
+                                 String address, double distance)
+            implements StoreRepository.NearbyStore {
+        @Override public UUID getStoreId() { return storeId; }
+        @Override public String getExternalId() { return externalId; }
+        @Override public String getName() { return name; }
+        @Override public String getAddress() { return address; }
+        @Override public double getDistance() { return distance; }
+    }
+
     public StagedResult matchAll(List<TourPoint> points) {
         Map<String, Match> matched = new LinkedHashMap<>();
         List<Stage> stages = new ArrayList<>();

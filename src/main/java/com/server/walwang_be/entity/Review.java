@@ -79,14 +79,17 @@ public class Review {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    /** 시연용으로 심어둔 데이터인지. 통계에서 걸러내야 할 때 쓴다. */
-    @Column(name = "is_mock", nullable = false)
-    private boolean mock;
+    /**
+     * 시연용으로 심어둔 리뷰인지.
+     * 조회는 항상 이 값으로 갈라진다 — 시연 모드는 목 리뷰만, 평소에는 실제 리뷰만 본다.
+     */
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
 
     @Builder
     private Review(User user, Store store, boolean dogAllowed, DogSize dogSize,
                    String photoUrl, String thumbnailUrl, String content,
-                   Collection<StoreTag> tags, boolean mock) {
+                   Collection<StoreTag> tags, boolean demo) {
         this.user = user;
         this.store = store;
         this.dogAllowed = dogAllowed;
@@ -98,6 +101,6 @@ public class Review {
                 ? EnumSet.noneOf(StoreTag.class)
                 : EnumSet.copyOf(tags);
         this.createdAt = Instant.now();
-        this.mock = mock;
+        this.demo = demo;
     }
 }

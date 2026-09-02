@@ -21,11 +21,17 @@ public record TourApiProperties(
         String baseUrl,
         String serviceKey,
         String mobileApp,
-        Duration timeout
+        Duration timeout,
+        Duration mapTimeout
 ) {
     private static final String DEFAULT_BASE_URL =
             "https://apis.data.go.kr/B551011/KorPetTourService2";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+    /**
+     * 지도 조회에 쓰는 짧은 타임아웃.
+     * 사용자가 화면에서 기다리는 요청이라, 늦게 오느니 빈 지도가 낫다.
+     */
+    private static final Duration DEFAULT_MAP_TIMEOUT = Duration.ofSeconds(3);
 
     public String baseUrlOrDefault() {
         return baseUrl == null || baseUrl.isBlank() ? DEFAULT_BASE_URL : baseUrl;
@@ -33,6 +39,10 @@ public record TourApiProperties(
 
     public String mobileAppOrDefault() {
         return mobileApp == null || mobileApp.isBlank() ? "walwang" : mobileApp;
+    }
+
+    public Duration mapTimeoutOrDefault() {
+        return mapTimeout == null ? DEFAULT_MAP_TIMEOUT : mapTimeout;
     }
 
     public Duration timeoutOrDefault() {

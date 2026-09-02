@@ -29,10 +29,11 @@ public record StoreDetailResponse(
     public static StoreDetailResponse of(Store store,
                                          List<String> tags,
                                          List<SizeStatusResponse> sizeStatus,
-                                         List<String> thumbnailUrls) {
+                                         List<String> thumbnailUrls,
+                                         boolean demo) {
         return new StoreDetailResponse(
                 store.getStoreId(),
-                store.getName(),
+                store.displayName(demo),
                 new GeoPoint(store.getLat(), store.getLng()),
                 store.getAddress(),
                 store.getType(),

@@ -45,16 +45,18 @@ public class StoreService {
     private final UserRepository userRepository;
 
     /** 지도 핀 조회. size가 null이면 두 크기를 모두 내려준다. */
-    public List<StoreCardResponse> findNearby(double lat, double lng, int radius, DogSize size) {
-        return toCards(storeRepository.findWithinRadius(lat, lng, radius), size);
+    public List<StoreCardResponse> findNearby(double lat, double lng, int radius,
+                                              DogSize size, boolean demo) {
+        return toCards(storeRepository.findWithinRadius(lat, lng, radius), size, demo);
     }
 
     /** 가게명 부분 일치 검색. */
-    public List<StoreCardResponse> search(String keyword) {
-        return toCards(storeRepository.findByNameContainingIgnoreCase(keyword), null);
+    public List<StoreCardResponse> search(String keyword, boolean demo) {
+        // 검색은 언제나 실제 상호로 한다. 가명은 응답에만 쓴다.
+        return toCards(storeRepository.findByNameContainingIgnoreCase(keyword), null, demo);
     }
 
-    public StoreDetailResponse findDetail(UUID storeId) {
+    public StoreDetailResponse findDetail(UUID storeId, boolean demo) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
@@ -69,16 +71,16 @@ public class StoreService {
                 toSizeStatus(storeSizeStatusRepository.findByStore_StoreId(storeId), null);
 
         List<String> thumbnailUrls = reviewRepository
-                .findByStore_StoreIdOrderByCreatedAtDesc(storeId, PageRequest.of(0, THUMBNAIL_LIMIT))
+                .findByStore_StoreIdAndDemoOrderByCreatedAtDesc(storeId, demo, PageRequest.of(0, THUMBNAIL_LIMIT))
                 .map(Review::getThumbnailUrl)
                 .getContent();
 
-        return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls);
+        return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls, demo);
     }
 
-    public List<ReviewResponse> findReviews(UUID storeId, int page, int size) {
+    public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo) {
         return reviewRepository
-                .findByStore_StoreIdOrderByCreatedAtDesc(storeId, PageRequest.of(page, size))
+                .findByStore_StoreIdAndDemoOrderByCreatedAtDesc(storeId, demo, PageRequest.of(page, size))
                 .map(ReviewResponse::from)
                 .getContent();
     }
@@ -116,14 +118,22 @@ public class StoreService {
                 .getContent();
 
         // 저장 순서를 유지해야 하므로 toCards가 넘겨받은 순서를 그대로 쓴다.
-        return toCards(stores, null);
+        return toCards(stores, null, false);
     }
 
     /**
      * 가게 목록에 크기별 상태를 붙인다.
      * 가게마다 상태를 따로 조회하면 N+1이 되므로 한 번에 읽어 메모리에서 묶는다.
      */
-    private List<StoreCardResponse> toCards(List<Store> stores, DogSize size) {
+    List<StoreCardResponse> toCards(List<Store> stores, DogSize size, boolean demo) {
+        return toCards(stores, size, demo, false);
+    }
+
+    /**
+     * @param petVerified 공사 데이터와 매칭된 목록이면 true
+     */
+    List<StoreCardResponse> toCards(List<Store> stores, DogSize size, boolean demo,
+                                    boolean petVerified) {
         if (stores.isEmpty()) {
             return List.of();
         }
@@ -136,7 +146,8 @@ public class StoreService {
 
         return stores.stream()
                 .map(store -> StoreCardResponse.of(store,
-                        toSizeStatus(statusByStore.getOrDefault(store.getStoreId(), List.of()), size)))
+                        toSizeStatus(statusByStore.getOrDefault(store.getStoreId(), List.of()), size),
+                        demo, petVerified))
                 .toList();
     }
 

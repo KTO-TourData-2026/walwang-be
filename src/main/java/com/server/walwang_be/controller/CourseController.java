@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -33,8 +34,10 @@ public class CourseController {
      * 마음에 들면 클라이언트가 그 값을 그대로 POST /courses 로 보내 저장한다.
      */
     @PostMapping("/courses/recommend")
-    public ResponseEntity<CourseResponse> recommend(@Valid @RequestBody CourseRecommendRequest request) {
-        return ResponseEntity.ok(courseService.recommend(request));
+    public ResponseEntity<CourseResponse> recommend(
+            @Valid @RequestBody CourseRecommendRequest request,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(courseService.recommend(request, demo));
     }
 
     /** 코스 저장. storeIds의 순서가 곧 방문 순서다. */
@@ -47,8 +50,9 @@ public class CourseController {
     /** 저장한 코스 상세. 남의 코스면 403. */
     @GetMapping("/courses/{courseId}")
     public ResponseEntity<CourseResponse> findOne(@AuthenticationPrincipal UUID userId,
-                                                  @PathVariable UUID courseId) {
-        return ResponseEntity.ok(courseService.findOne(userId, courseId));
+                                                  @PathVariable UUID courseId,
+                                                  @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(courseService.findOne(userId, courseId, demo));
     }
 
     /** 저장한 코스 삭제. 남의 코스면 403. 명세대로 여기만 /course(단수)다. */

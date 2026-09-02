@@ -4,6 +4,7 @@ import com.server.walwang_be.dto.ReviewResponse;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.StoreDetailResponse;
 import com.server.walwang_be.entity.DogSize;
+import com.server.walwang_be.service.MapStoreService;
 import com.server.walwang_be.service.StoreService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -30,30 +31,39 @@ import java.util.UUID;
 public class StoreController {
 
     private final StoreService storeService;
+    private final MapStoreService mapStoreService;
 
     /**
-     * 지도 핀 조회. 화면 중심 좌표에서 radius(미터) 안의 가게를 준다.
-     * size를 주면 그 크기의 상태만, 안 주면 두 크기를 모두 내려준다.
+     * 지도 핀 조회. 공사 데이터와 매칭된 가게만 준다 —
+     * 반려동물 동반이 확인된 곳이라 지도가 훨씬 읽힌다.
+     *
+     * 공사 API를 요청마다 호출하며, 실패하면 빈 목록을 준다(지도는 떠야 한다).
+     * size를 주면 그 크기로 동반 불가인 곳을 뺀다.
      */
     @GetMapping
     public ResponseEntity<List<StoreCardResponse>> findNearby(
             @RequestParam double lat,
             @RequestParam double lng,
             @RequestParam(defaultValue = "2000") @Min(1) @Max(5000) int radius,
-            @RequestParam(required = false) DogSize size) {
-        return ResponseEntity.ok(storeService.findNearby(lat, lng, radius, size));
+            @RequestParam(required = false) DogSize size,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(mapStoreService.findVerifiedNearby(lat, lng, radius, size, demo));
     }
 
     /** 가게명 부분 일치 검색. */
     @GetMapping("/search")
-    public ResponseEntity<List<StoreCardResponse>> search(@RequestParam @NotBlank String keyword) {
-        return ResponseEntity.ok(storeService.search(keyword));
+    public ResponseEntity<List<StoreCardResponse>> search(
+            @RequestParam @NotBlank String keyword,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(storeService.search(keyword, demo));
     }
 
     /** 가게 상세. 리뷰 본문은 빠지고 썸네일과 태그만 포함된다. */
     @GetMapping("/{storeId}")
-    public ResponseEntity<StoreDetailResponse> findDetail(@PathVariable UUID storeId) {
-        return ResponseEntity.ok(storeService.findDetail(storeId));
+    public ResponseEntity<StoreDetailResponse> findDetail(
+            @PathVariable UUID storeId,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(storeService.findDetail(storeId, demo));
     }
 
     /** 가게의 리뷰 목록. 최신순. */
@@ -61,8 +71,9 @@ public class StoreController {
     public ResponseEntity<List<ReviewResponse>> findReviews(
             @PathVariable UUID storeId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(storeService.findReviews(storeId, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(storeService.findReviews(storeId, page, size, demo));
     }
 
     /** 가게 저장. 이미 저장돼 있어도 200. */

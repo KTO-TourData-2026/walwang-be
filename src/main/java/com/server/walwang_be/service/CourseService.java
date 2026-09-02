@@ -16,6 +16,7 @@ import com.server.walwang_be.entity.StoreTagCount;
 import com.server.walwang_be.repo.SavedCourseRepository;
 import com.server.walwang_be.repo.StoreRepository;
 import com.server.walwang_be.repo.StoreSizeStatusRepository;
+import com.server.walwang_be.repo.PlaceEmbeddingRepository;
 import com.server.walwang_be.repo.StoreTagCountRepository;
 import com.server.walwang_be.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +57,7 @@ public class CourseService {
     private final StoreTagCountRepository storeTagCountRepository;
     private final SavedCourseRepository savedCourseRepository;
     private final UserRepository userRepository;
+    private final PlaceEmbeddingRepository placeEmbeddingRepository;
 
     /**
      * 코스 추천.
@@ -63,7 +65,7 @@ public class CourseService {
      * 조건에 맞는 곳이 모자라면 기준을 단계적으로 낮춘다 — 빈 코스를 주느니
      * 조금 어긋나더라도 갈 만한 곳을 주고 relaxed로 알리는 편이 낫다.
      */
-    public CourseResponse recommend(CourseRecommendRequest request) {
+    public CourseResponse recommend(CourseRecommendRequest request, boolean demo) {
         CourseDuration duration = request.duration();
         List<Store> nearby = storeRepository.findWithinRadius(
                 request.lat(), request.lng(), duration.searchRadius());
@@ -95,6 +97,7 @@ public class CourseService {
             }
         }
 
+        candidates = rankCandidates(candidates, demo);
         List<Store> route = buildRoute(candidates, request.lat(), request.lng(), duration.maxStores());
         List<List<Double>> walkPath = toWalkPath(route, request.lat(), request.lng());
 
@@ -109,7 +112,7 @@ public class CourseService {
                 walkPath,
                 null,
                 relaxed,
-                toStoreResponses(route, statusByStore, loadTags(route)));
+                toStoreResponses(route, statusByStore, loadTags(route), demo));
     }
 
     @Transactional
@@ -136,7 +139,7 @@ public class CourseService {
     }
 
     /** 저장된 코스 조회. 남의 코스는 존재를 알려주지 않고 403으로 끊는다. */
-    public CourseResponse findOne(UUID userId, UUID courseId) {
+    public CourseResponse findOne(UUID userId, UUID courseId, boolean demo) {
         SavedCourse course = loadOwnedCourse(userId, courseId);
 
         List<Store> stores = course.getStores().stream()
@@ -156,7 +159,7 @@ public class CourseService {
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
-                toStoreResponses(stores, statusByStore, loadTags(stores)));
+                toStoreResponses(stores, statusByStore, loadTags(stores), demo));
     }
 
     @Transactional
@@ -191,6 +194,52 @@ public class CourseService {
             ordered.add(store);
         }
         return ordered;
+    }
+
+    /**
+     * 후보 순서를 정한다.
+     *
+     * 임베딩이 있으면 벡터 유사도로 줄을 세우고, 없으면 그대로 둬서 거리순 경로 구성에 맡긴다.
+     * 실제 모드에는 리뷰가 없어 임베딩도 없는데, 그건 오류가 아니라 정상 경로다 —
+     * 시연이든 아니든 같은 코드가 돌고 파라미터만 달라진다.
+     *
+     * 기준 벡터(queryEmbedding)는 아직 AI 쪽에서 오지 않아 지금은 늘 폴백을 탄다.
+     * 연결되면 이 메서드 안에서만 바뀐다.
+     */
+    private List<Store> rankCandidates(List<Store> candidates, boolean demo) {
+        if (candidates.isEmpty()) {
+            return candidates;
+        }
+        List<UUID> ids = candidates.stream().map(Store::getStoreId).toList();
+        if (!placeEmbeddingRepository.existsAny(ids, demo)) {
+            // 임베딩이 하나도 없다 -> 거리순으로 간다.
+            return candidates;
+        }
+        List<UUID> ranked = placeEmbeddingRepository.rankBySimilarity(queryEmbedding(), ids, demo);
+        if (ranked.isEmpty()) {
+            return candidates;
+        }
+        Map<UUID, Store> byId = candidates.stream()
+                .collect(Collectors.toMap(Store::getStoreId, store -> store));
+
+        List<Store> ordered = new ArrayList<>(candidates.size());
+        ranked.forEach(id -> {
+            Store store = byId.remove(id);
+            if (store != null) {
+                ordered.add(store);
+            }
+        });
+        // 임베딩이 없는 후보는 뒤에 붙인다. 버리면 코스가 짧아진다.
+        ordered.addAll(byId.values());
+        return ordered;
+    }
+
+    /**
+     * 기준 벡터. AI 추천 모델이 붙기 전까지는 없다.
+     * null 을 돌려주면 rankBySimilarity 가 빈 목록을 주고 거리순으로 폴백된다.
+     */
+    private float[] queryEmbedding() {
+        return null;
     }
 
     /**
@@ -293,7 +342,8 @@ public class CourseService {
 
     private List<CourseStoreResponse> toStoreResponses(List<Store> route,
                                                        Map<UUID, StoreSizeStatus> statusByStore,
-                                                       Map<UUID, List<String>> tagsByStore) {
+                                                       Map<UUID, List<String>> tagsByStore,
+                                                       boolean demo) {
         List<CourseStoreResponse> responses = new ArrayList<>(route.size());
         for (int i = 0; i < route.size(); i++) {
             Store store = route.get(i);
@@ -301,7 +351,7 @@ public class CourseService {
 
             responses.add(new CourseStoreResponse(
                     store.getStoreId(),
-                    store.getName(),
+                    store.displayName(demo),
                     store.getType(),
                     store.getLat(),
                     store.getLng(),

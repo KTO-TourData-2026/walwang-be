@@ -12,7 +12,7 @@ import java.util.UUID;
 /**
  * multipart의 data 파트로 들어오는 리뷰 본문.
  *
- * is_mock은 여기에 없다 — 클라이언트가 정할 값이 아니라 서버가 항상 false로 박는다.
+ * is_demo는 여기에 없다 — 클라이언트가 정할 값이 아니라 서버가 항상 false로 박는다.
  */
 public record ReviewCreateRequest(
         @NotNull UUID storeId,

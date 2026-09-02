@@ -125,7 +125,7 @@ public class ReviewService {
                 .content(request.content())
                 .tags(tags)
                 // 클라이언트가 뭘 보내든 실제 이용자의 리뷰는 항상 false다.
-                .mock(false)
+                .demo(false)
                 .build());
 
         reviewRepository.flush();
@@ -232,7 +232,8 @@ public class ReviewService {
      * 더하고 빼는 방식이면 시간가중 점수가 원래대로 돌아오지 않아 오차가 쌓인다.
      */
     public void recompute(Store store) {
-        List<Review> reviews = reviewRepository.findByStore_StoreId(store.getStoreId());
+        // 실제 리뷰만 센다. 목 리뷰가 실제 동반 가능 점수를 흔들면 안 된다.
+        List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemo(store.getStoreId(), false);
         Instant now = Instant.now();
 
         int totalPossible = 0;
