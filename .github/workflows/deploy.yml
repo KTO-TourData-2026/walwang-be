@@ -16,11 +16,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Gradle 배포판과 의존성을 캐시한다.
+      # 없으면 실행마다 Maven Central에서 전부 새로 받는데,
+      # Actions 러너는 IP를 공유해서 429(Too Many Requests)로 막히곤 한다.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Grant execute permission
         run: chmod +x ./gradlew
 
+      # 캐시가 비어 있는 첫 실행이나 의존성이 바뀐 날은
+      # 여전히 원격을 때리므로, 일시적인 429는 한 번 더 시도해 넘긴다.
       - name: Build
-        run: ./gradlew bootJar -x test
+        run: ./gradlew bootJar -x test || (sleep 60 && ./gradlew bootJar -x test)
 
       - name: Copy jar to EC2
         uses: appleboy/scp-action@v0.1.7
