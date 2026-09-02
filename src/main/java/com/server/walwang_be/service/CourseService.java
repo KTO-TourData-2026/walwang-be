@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -67,7 +68,7 @@ public class CourseService {
         List<Store> nearby = storeRepository.findWithinRadius(
                 request.lat(), request.lng(), duration.searchRadius());
 
-        Map<Long, StoreSizeStatus> statusByStore = loadStatuses(nearby, request.dogSize());
+        Map<UUID, StoreSizeStatus> statusByStore = loadStatuses(nearby, request.dogSize());
 
         // 1순위: 목적에 맞고, 동반 불가로 확인되지 않은 곳
         List<Store> candidates = nearby.stream()
@@ -112,7 +113,7 @@ public class CourseService {
     }
 
     @Transactional
-    public Long save(Long userId, CourseSaveRequest request) {
+    public UUID save(UUID userId, CourseSaveRequest request) {
         List<Store> stores = loadStoresInOrder(request.storeIds());
 
         SavedCourse course = SavedCourse.builder()
@@ -135,13 +136,13 @@ public class CourseService {
     }
 
     /** 저장된 코스 조회. 남의 코스는 존재를 알려주지 않고 403으로 끊는다. */
-    public CourseResponse findOne(Long userId, Long courseId) {
+    public CourseResponse findOne(UUID userId, UUID courseId) {
         SavedCourse course = loadOwnedCourse(userId, courseId);
 
         List<Store> stores = course.getStores().stream()
                 .map(SavedCourseStore::getStore)
                 .toList();
-        Map<Long, StoreSizeStatus> statusByStore = loadStatuses(stores, course.getDogSize());
+        Map<UUID, StoreSizeStatus> statusByStore = loadStatuses(stores, course.getDogSize());
 
         return new CourseResponse(
                 course.getCourseId(),
@@ -159,11 +160,11 @@ public class CourseService {
     }
 
     @Transactional
-    public void delete(Long userId, Long courseId) {
+    public void delete(UUID userId, UUID courseId) {
         savedCourseRepository.delete(loadOwnedCourse(userId, courseId));
     }
 
-    private SavedCourse loadOwnedCourse(Long userId, Long courseId) {
+    private SavedCourse loadOwnedCourse(UUID userId, UUID courseId) {
         SavedCourse course = savedCourseRepository.findWithStoresByCourseId(courseId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 코스입니다."));
 
@@ -177,12 +178,12 @@ public class CourseService {
      * 요청한 순서를 그대로 지킨다 — 순서가 곧 방문 순서라 정렬이 바뀌면 코스가 달라진다.
      * findAllById는 순서를 보장하지 않으므로 한 번 읽어 맵으로 되짚는다.
      */
-    private List<Store> loadStoresInOrder(List<Long> storeIds) {
-        Map<Long, Store> found = storeRepository.findAllById(storeIds).stream()
+    private List<Store> loadStoresInOrder(List<UUID> storeIds) {
+        Map<UUID, Store> found = storeRepository.findAllById(storeIds).stream()
                 .collect(Collectors.toMap(Store::getStoreId, store -> store));
 
         List<Store> ordered = new ArrayList<>(storeIds.size());
-        for (Long storeId : storeIds) {
+        for (UUID storeId : storeIds) {
             Store store = found.get(storeId);
             if (store == null) {
                 throw new NoSuchElementException("존재하지 않는 가게입니다: " + storeId);
@@ -258,7 +259,7 @@ public class CourseService {
         return status == null || status.status() != AvailabilityStatus.IMPOSSIBLE;
     }
 
-    private Map<Long, StoreSizeStatus> loadStatuses(List<Store> stores, DogSize dogSize) {
+    private Map<UUID, StoreSizeStatus> loadStatuses(List<Store> stores, DogSize dogSize) {
         if (stores.isEmpty()) {
             return Map.of();
         }
@@ -268,11 +269,11 @@ public class CourseService {
                         status -> status.getStore().getStoreId(), status -> status));
     }
 
-    private Map<Long, List<String>> loadTags(List<Store> stores) {
+    private Map<UUID, List<String>> loadTags(List<Store> stores) {
         if (stores.isEmpty()) {
             return Map.of();
         }
-        Map<Long, List<String>> tagsByStore = new LinkedHashMap<>();
+        Map<UUID, List<String>> tagsByStore = new LinkedHashMap<>();
         storeTagCountRepository.findByStore_StoreIdIn(storeIds(stores)).stream()
                 // 한 번도 선택되지 않은 태그는 붙은 적 없는 것과 같다.
                 .filter(tagCount -> tagCount.getCount() > 0)
@@ -286,13 +287,13 @@ public class CourseService {
         return tagsByStore;
     }
 
-    private List<Long> storeIds(List<Store> stores) {
+    private List<UUID> storeIds(List<Store> stores) {
         return stores.stream().map(Store::getStoreId).toList();
     }
 
     private List<CourseStoreResponse> toStoreResponses(List<Store> route,
-                                                       Map<Long, StoreSizeStatus> statusByStore,
-                                                       Map<Long, List<String>> tagsByStore) {
+                                                       Map<UUID, StoreSizeStatus> statusByStore,
+                                                       Map<UUID, List<String>> tagsByStore) {
         List<CourseStoreResponse> responses = new ArrayList<>(route.size());
         for (int i = 0; i < route.size(); i++) {
             Store store = route.get(i);

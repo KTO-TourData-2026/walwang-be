@@ -31,6 +31,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 import java.util.List;
+import java.util.UUID;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -104,7 +105,7 @@ public class UserController {
      */
     @PatchMapping("/me")
     public ResponseEntity<RefreshTokenResponse> updateMe(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @Valid @RequestBody UserPatchRequest request) {
         TokenResponse tokens = userService.updateMe(
@@ -118,7 +119,7 @@ public class UserController {
      */
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         userWithdrawalService.withdraw(userId, BearerTokenResolver.resolve(authorization));
         return ResponseEntity.ok().build();
@@ -126,14 +127,14 @@ public class UserController {
 
     /** 마이 화면. 닉네임과 함께 리뷰 수·모은 도장 수·저장 장소 수가 나간다. */
     @GetMapping("/me")
-    public ResponseEntity<UserProfileResponse> findMe(@AuthenticationPrincipal Long userId) {
+    public ResponseEntity<UserProfileResponse> findMe(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(userService.findMe(userId));
     }
 
     /** 내가 쓴 리뷰 목록. 최신순. */
     @GetMapping("/me/reviews")
     public ResponseEntity<List<MyReviewResponse>> findMyReviews(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(userService.findMyReviews(userId, page, size));
@@ -142,7 +143,7 @@ public class UserController {
     /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
     @GetMapping("/store")
     public ResponseEntity<List<StoreCardResponse>> findSavedStores(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(storeService.findSavedStores(userId, page, size));
@@ -151,7 +152,7 @@ public class UserController {
     /** 여권 미리보기. 최신 도장부터. */
     @GetMapping("/me/passport")
     public ResponseEntity<List<PassportSummaryResponse>> findMyPassport(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size) {
         return ResponseEntity.ok(passportService.findMine(userId, page, size));
@@ -160,8 +161,8 @@ public class UserController {
     /** 여권 도장 상세. 남의 여권이면 403. */
     @GetMapping("/me/passport/{passportId}")
     public ResponseEntity<PassportDetailResponse> findMyPassportDetail(
-            @AuthenticationPrincipal Long userId,
-            @PathVariable Long passportId) {
+            @AuthenticationPrincipal UUID userId,
+            @PathVariable UUID passportId) {
         return ResponseEntity.ok(passportService.findOne(userId, passportId));
     }
 

@@ -72,7 +72,7 @@ public class ReviewService {
      * 리뷰 등록은 그 토큰이 있어야만 통과한다 — 가보지 않은 가게에 리뷰를 쓰지 못하게 하는 장치다.
      */
     @Transactional(readOnly = true)
-    public ReceiptVerifyResponse verifyReceipt(Long userId, Long storeId, MultipartFile receipt) {
+    public ReceiptVerifyResponse verifyReceipt(UUID userId, UUID storeId, MultipartFile receipt) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
         validateReceiptFile(receipt);
@@ -95,7 +95,7 @@ public class ReviewService {
     }
 
     @Transactional
-    public ReviewCreateResponse create(Long userId, ReviewCreateRequest request, MultipartFile photo) {
+    public ReviewCreateResponse create(UUID userId, ReviewCreateRequest request, MultipartFile photo) {
         consumeReceiptToken(userId, request);
 
         Store store = storeRepository.findById(request.storeId())
@@ -132,7 +132,7 @@ public class ReviewService {
         recompute(store);
 
         // 도장은 동반 가능했던 방문에만 찍는다 — 거절당한 기록은 여권에 남기지 않는다.
-        Long passportId = request.dogAllowed()
+        UUID passportId = request.dogAllowed()
                 ? passportService.createFor(user, store, review).getPassportId()
                 : null;
         if (passportId != null) {
@@ -150,7 +150,7 @@ public class ReviewService {
 
     /** 내 리뷰 삭제. 남의 리뷰는 존재를 알려주지 않고 403으로 끊는다. */
     @Transactional
-    public void delete(Long userId, Long reviewId) {
+    public void delete(UUID userId, UUID reviewId) {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 리뷰입니다."));
 
@@ -203,7 +203,7 @@ public class ReviewService {
         }
     }
 
-    private void consumeReceiptToken(Long userId, ReviewCreateRequest request) {
+    private void consumeReceiptToken(UUID userId, ReviewCreateRequest request) {
         ReceiptTokenRepository.Issued issued = receiptTokenRepository.find(request.receiptToken())
                 .orElseThrow(() -> new AccessDeniedException("영수증 인증이 만료되었습니다. 다시 인증해 주세요."));
 

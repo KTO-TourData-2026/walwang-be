@@ -11,6 +11,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 /**
  * "user"는 PostgreSQL 예약어라 테이블명은 "users"로 둔다.
  */
@@ -21,9 +23,9 @@ import lombok.NoArgsConstructor;
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "user_id")
-    private Long userId;
+    private UUID userId;
 
     @Column(nullable = false, unique = true, length = 320)
     private String email;

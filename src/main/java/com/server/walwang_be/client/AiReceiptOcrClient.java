@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /** POST /internal/ocr/verify 를 호출한다. */
 public class AiReceiptOcrClient implements ReceiptOcrClient {
@@ -32,7 +33,7 @@ public class AiReceiptOcrClient implements ReceiptOcrClient {
     }
 
     @Override
-    public OcrResult verify(MultipartFile receipt, Long storeId, String storeName) {
+    public OcrResult verify(MultipartFile receipt, UUID storeId, String storeName) {
         MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
         parts.add("receipt", toResource(receipt));
         parts.add("store_id", storeId);

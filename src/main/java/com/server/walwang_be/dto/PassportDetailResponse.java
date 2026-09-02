@@ -5,12 +5,13 @@ import com.server.walwang_be.entity.Passport;
 import com.server.walwang_be.entity.StampStatus;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /** 여권 도장 상세. 어느 가게에서 찍은 도장인지와 그때 올린 사진이 함께 나간다. */
 public record PassportDetailResponse(
-        Long id,
-        Long storeId,
-        Long reviewId,
+        UUID id,
+        UUID storeId,
+        UUID reviewId,
         String stampUrl,
         StampStatus status,
         /** 리뷰에 사진이 없으면 비어 있다. */

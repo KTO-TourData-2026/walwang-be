@@ -6,6 +6,7 @@ import com.server.walwang_be.entity.CoursePurpose;
 import com.server.walwang_be.entity.DogSize;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 코스 한 개. 추천 결과와 저장된 코스 조회가 같은 모양을 쓴다 —
@@ -15,7 +16,7 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record CourseResponse(
-        Long id,
+        UUID id,
         String title,
         DogSize dogSize,
         List<CoursePurpose> purposes,

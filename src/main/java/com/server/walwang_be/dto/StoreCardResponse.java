@@ -3,6 +3,7 @@ package com.server.walwang_be.dto;
 import com.server.walwang_be.entity.Store;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 지도 핀 / 검색 결과 / 저장 장소 카드.
@@ -11,7 +12,7 @@ import java.util.List;
  * 좌표(geog)는 지도에 찍는 값이고 address는 사람이 읽는 값이라 둘 다 필요하다.
  */
 public record StoreCardResponse(
-        Long storeId,
+        UUID storeId,
         String storeName,
         GeoPoint geog,
         String address,

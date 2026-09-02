@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Refresh Token 저장소.
@@ -28,7 +29,7 @@ public class RefreshTokenRepository {
     private final StringRedisTemplate redisTemplate;
     private final JwtProperties jwtProperties;
 
-    public void save(String refreshToken, Long userId) {
+    public void save(String refreshToken, UUID userId) {
         Duration ttl = Duration.ofSeconds(jwtProperties.refreshTokenValidity());
 
         redisTemplate.opsForValue().set(TOKEN_PREFIX + refreshToken, String.valueOf(userId), ttl);
@@ -37,9 +38,9 @@ public class RefreshTokenRepository {
         redisTemplate.expire(userIndexKey(userId), ttl);
     }
 
-    public Optional<Long> findUserId(String refreshToken) {
+    public Optional<UUID> findUserId(String refreshToken) {
         String userId = redisTemplate.opsForValue().get(TOKEN_PREFIX + refreshToken);
-        return Optional.ofNullable(userId).map(Long::valueOf);
+        return Optional.ofNullable(userId).map(UUID::fromString);
     }
 
     public void delete(String refreshToken) {
@@ -49,7 +50,7 @@ public class RefreshTokenRepository {
     }
 
     /** 해당 유저의 모든 기기 로그아웃. 비밀번호 변경 시 사용한다. */
-    public void deleteAllByUserId(Long userId) {
+    public void deleteAllByUserId(UUID userId) {
         Set<String> tokens = redisTemplate.opsForSet().members(userIndexKey(userId));
         if (tokens != null && !tokens.isEmpty()) {
             redisTemplate.delete(tokens.stream().map(TOKEN_PREFIX::concat).toList());
@@ -57,7 +58,7 @@ public class RefreshTokenRepository {
         redisTemplate.delete(userIndexKey(userId));
     }
 
-    private String userIndexKey(Long userId) {
+    private String userIndexKey(UUID userId) {
         return USER_INDEX_PREFIX + userId;
     }
 }

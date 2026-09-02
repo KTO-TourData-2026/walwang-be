@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -53,7 +54,7 @@ public class StoreService {
         return toCards(storeRepository.findByNameContainingIgnoreCase(keyword), null);
     }
 
-    public StoreDetailResponse findDetail(Long storeId) {
+    public StoreDetailResponse findDetail(UUID storeId) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
@@ -75,7 +76,7 @@ public class StoreService {
         return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls);
     }
 
-    public List<ReviewResponse> findReviews(Long storeId, int page, int size) {
+    public List<ReviewResponse> findReviews(UUID storeId, int page, int size) {
         return reviewRepository
                 .findByStore_StoreIdOrderByCreatedAtDesc(storeId, PageRequest.of(page, size))
                 .map(ReviewResponse::from)
@@ -87,7 +88,7 @@ public class StoreService {
      * 같은 버튼을 두 번 눌러도 실패로 보이지 않게 하려는 것이다.
      */
     @Transactional
-    public void saveStore(Long userId, Long storeId) {
+    public void saveStore(UUID userId, UUID storeId) {
         if (savedStoreRepository.existsByUser_UserIdAndStore_StoreId(userId, storeId)) {
             return;
         }
@@ -103,12 +104,12 @@ public class StoreService {
 
     /** 저장 해제. 저장돼 있지 않아도 성공으로 본다(저장과 같은 이유). */
     @Transactional
-    public void unsaveStore(Long userId, Long storeId) {
+    public void unsaveStore(UUID userId, UUID storeId) {
         savedStoreRepository.deleteByUser_UserIdAndStore_StoreId(userId, storeId);
     }
 
     /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
-    public List<StoreCardResponse> findSavedStores(Long userId, int page, int size) {
+    public List<StoreCardResponse> findSavedStores(UUID userId, int page, int size) {
         List<Store> stores = savedStoreRepository
                 .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
                 .map(SavedStore::getStore)
@@ -126,9 +127,9 @@ public class StoreService {
         if (stores.isEmpty()) {
             return List.of();
         }
-        List<Long> storeIds = stores.stream().map(Store::getStoreId).toList();
+        List<UUID> storeIds = stores.stream().map(Store::getStoreId).toList();
 
-        Map<Long, List<StoreSizeStatus>> statusByStore =
+        Map<UUID, List<StoreSizeStatus>> statusByStore =
                 storeSizeStatusRepository.findByStore_StoreIdIn(storeIds).stream()
                         // LAZY 프록시라도 FK인 store_id는 초기화 없이 읽힌다.
                         .collect(Collectors.groupingBy(status -> status.getStore().getStoreId()));

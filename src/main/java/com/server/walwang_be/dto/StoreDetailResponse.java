@@ -5,13 +5,14 @@ import com.server.walwang_be.entity.Store;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 가게 상세. 리뷰 본문은 빠지고, 대신 리뷰에서 뽑은 썸네일과
  * 많이 선택된 태그가 함께 나간다.
  */
 public record StoreDetailResponse(
-        Long storeId,
+        UUID storeId,
         String name,
         GeoPoint geog,
         String address,

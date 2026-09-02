@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Authorization: Bearer {accessToken} 헤더를 읽어 SecurityContext를 채운다.
@@ -36,7 +37,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = BearerTokenResolver.resolve(request.getHeader(HttpHeaders.AUTHORIZATION));
         if (token != null && !tokenBlacklistRepository.isBlacklisted(token)) {
             try {
-                Long userId = jwtProvider.parseUserId(token);
+                UUID userId = jwtProvider.parseUserId(token);
                 var authentication = new UsernamePasswordAuthenticationToken(
                         userId, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
                 SecurityContextHolder.getContext().setAuthentication(authentication);

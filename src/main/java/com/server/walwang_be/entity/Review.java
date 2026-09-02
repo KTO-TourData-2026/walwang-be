@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 가게 방문 리뷰. 이 리뷰들이 쌓여 store_size_status의 점수가 된다.
@@ -36,9 +37,9 @@ import java.util.Set;
 public class Review {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "review_id")
-    private Long reviewId;
+    private UUID reviewId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)

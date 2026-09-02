@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 /**
  * 클래스 단위 @RequestMapping을 두지 않는다 —
  * 삭제만 /course(단수)로 열기로 해서, 경로를 메서드마다 그대로 적는 편이 헷갈리지 않는다.
@@ -37,22 +39,22 @@ public class CourseController {
 
     /** 코스 저장. storeIds의 순서가 곧 방문 순서다. */
     @PostMapping("/courses")
-    public ResponseEntity<CourseCreateResponse> save(@AuthenticationPrincipal Long userId,
+    public ResponseEntity<CourseCreateResponse> save(@AuthenticationPrincipal UUID userId,
                                                      @Valid @RequestBody CourseSaveRequest request) {
         return ResponseEntity.ok(new CourseCreateResponse(courseService.save(userId, request)));
     }
 
     /** 저장한 코스 상세. 남의 코스면 403. */
     @GetMapping("/courses/{courseId}")
-    public ResponseEntity<CourseResponse> findOne(@AuthenticationPrincipal Long userId,
-                                                  @PathVariable Long courseId) {
+    public ResponseEntity<CourseResponse> findOne(@AuthenticationPrincipal UUID userId,
+                                                  @PathVariable UUID courseId) {
         return ResponseEntity.ok(courseService.findOne(userId, courseId));
     }
 
     /** 저장한 코스 삭제. 남의 코스면 403. 명세대로 여기만 /course(단수)다. */
     @DeleteMapping("/course/{courseId}")
-    public ResponseEntity<Void> delete(@AuthenticationPrincipal Long userId,
-                                       @PathVariable Long courseId) {
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal UUID userId,
+                                       @PathVariable UUID courseId) {
         courseService.delete(userId, courseId);
         return ResponseEntity.ok().build();
     }

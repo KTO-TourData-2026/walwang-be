@@ -3,10 +3,11 @@ package com.server.walwang_be.dto;
 import com.server.walwang_be.entity.AvailabilityStatus;
 
 import java.util.List;
+import java.util.UUID;
 
 /** 코스에 담긴 가게 한 곳. */
 public record CourseStoreResponse(
-        Long storeId,
+        UUID storeId,
         String name,
         String type,
         double lat,

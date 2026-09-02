@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 영수증 인증 토큰. 인증에 통과한 (유저, 가게) 조합을 30분간 기억한다.
@@ -23,7 +24,7 @@ public class ReceiptTokenRepository {
 
     private final StringRedisTemplate redisTemplate;
 
-    public void save(String token, Long userId, Long storeId) {
+    public void save(String token, UUID userId, UUID storeId) {
         redisTemplate.opsForValue().set(key(token), userId + ":" + storeId, TTL);
     }
 
@@ -34,7 +35,7 @@ public class ReceiptTokenRepository {
             return Optional.empty();
         }
         String[] parts = value.split(":", 2);
-        return Optional.of(new Issued(Long.valueOf(parts[0]), Long.valueOf(parts[1])));
+        return Optional.of(new Issued(UUID.fromString(parts[0]), UUID.fromString(parts[1])));
     }
 
     /** 리뷰 등록에 쓴 토큰은 즉시 없앤다. 영수증 한 장에 리뷰 하나다. */
@@ -46,6 +47,6 @@ public class ReceiptTokenRepository {
         return KEY_PREFIX + token;
     }
 
-    public record Issued(Long userId, Long storeId) {
+    public record Issued(UUID userId, UUID storeId) {
     }
 }

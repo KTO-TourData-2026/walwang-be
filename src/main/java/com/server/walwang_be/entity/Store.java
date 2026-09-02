@@ -17,6 +17,7 @@ import org.locationtech.jts.geom.PrecisionModel;
 
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.UUID;
 
 /**
  * 가게. 외부 API로 수집하므로 PK는 내부에서 만들고,
@@ -38,9 +39,9 @@ public class Store {
             new GeometryFactory(new PrecisionModel(), SRID);
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "store_id")
-    private Long storeId;
+    private UUID storeId;
 
     /** 외부 API의 식별자. 재수집할 때 이미 있는 가게인지 판별한다. */
     @Column(name = "external_id", nullable = false, unique = true, length = 64)

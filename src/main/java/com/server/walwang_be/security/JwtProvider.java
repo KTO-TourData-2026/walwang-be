@@ -10,6 +10,7 @@ import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * Access Token 발급/검증. RS256 비대칭 서명이라
@@ -30,7 +31,7 @@ public class JwtProvider {
         this.accessTokenValidity = Duration.ofSeconds(properties.accessTokenValidity());
     }
 
-    public String createAccessToken(Long userId) {
+    public String createAccessToken(UUID userId) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(String.valueOf(userId))
@@ -45,8 +46,8 @@ public class JwtProvider {
      *
      * @throws JwtException 서명 불일치, 만료, 형식 오류 등 검증 실패
      */
-    public Long parseUserId(String token) {
-        return Long.valueOf(parseClaims(token).getSubject());
+    public UUID parseUserId(String token) {
+        return UUID.fromString(parseClaims(token).getSubject());
     }
 
     /** 블랙리스트 TTL 계산용. */

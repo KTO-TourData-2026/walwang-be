@@ -10,17 +10,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface PassportRepository extends JpaRepository<Passport, Long> {
+public interface PassportRepository extends JpaRepository<Passport, UUID> {
 
-    Page<Passport> findByUser_UserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    Page<Passport> findByUser_UserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     /** 마이 화면의 "모은 도장 수". 목록은 페이징이라 총 개수를 따로 센다. */
-    long countByUser_UserId(Long userId);
+    long countByUser_UserId(UUID userId);
 
     /** 상세 화면에 리뷰 사진과 가게명이 함께 들어가므로 같이 끌어온다. */
     @EntityGraph(attributePaths = {"review", "store"})
-    Optional<Passport> findWithReviewByPassportId(Long passportId);
+    Optional<Passport> findWithReviewByPassportId(UUID passportId);
 
     /**
      * 도장 생성이 끝나지 않은 채 남은 여권.
@@ -31,8 +32,8 @@ public interface PassportRepository extends JpaRepository<Passport, Long> {
     List<Passport> findTop20ByStatusAndCreatedAtBefore(StampStatus status, Instant before);
 
     /** 리뷰가 지워지면 도장도 함께 사라진다. */
-    void deleteByReview_ReviewId(Long reviewId);
+    void deleteByReview_ReviewId(UUID reviewId);
 
     /** 회원 탈퇴 시 함께 정리한다. */
-    void deleteByUser_UserId(Long userId);
+    void deleteByUser_UserId(UUID userId);
 }

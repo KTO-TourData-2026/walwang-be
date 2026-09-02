@@ -5,6 +5,7 @@ import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.Store;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * 내가 쓴 리뷰 한 건.
@@ -13,8 +14,8 @@ import java.time.Instant;
  * 내 리뷰 목록에서는 "누가 썼는지"가 아니라 "어디에 썼는지"가 필요하다.
  */
 public record MyReviewResponse(
-        Long reviewId,
-        Long storeId,
+        UUID reviewId,
+        UUID storeId,
         String storeName,
         /** 업종. */
         String type,

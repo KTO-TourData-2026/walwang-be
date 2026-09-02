@@ -5,6 +5,7 @@ import com.server.walwang_be.entity.Passport;
 import com.server.walwang_be.entity.StampStatus;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * 여권 목록의 도장 한 개.
@@ -14,7 +15,7 @@ import java.time.Instant;
  * status를 함께 주므로 화면에서 "생성 중" 표시를 붙일 수도 있다.
  */
 public record PassportSummaryResponse(
-        Long id,
+        UUID id,
         String stampUrl,
         StampStatus status,
         Instant createdAt

@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/stores")
@@ -51,14 +52,14 @@ public class StoreController {
 
     /** 가게 상세. 리뷰 본문은 빠지고 썸네일과 태그만 포함된다. */
     @GetMapping("/{storeId}")
-    public ResponseEntity<StoreDetailResponse> findDetail(@PathVariable Long storeId) {
+    public ResponseEntity<StoreDetailResponse> findDetail(@PathVariable UUID storeId) {
         return ResponseEntity.ok(storeService.findDetail(storeId));
     }
 
     /** 가게의 리뷰 목록. 최신순. */
     @GetMapping("/{storeId}/reviews")
     public ResponseEntity<List<ReviewResponse>> findReviews(
-            @PathVariable Long storeId,
+            @PathVariable UUID storeId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(storeService.findReviews(storeId, page, size));
@@ -66,16 +67,16 @@ public class StoreController {
 
     /** 가게 저장. 이미 저장돼 있어도 200. */
     @PostMapping("/{storeId}/save")
-    public ResponseEntity<Void> saveStore(@AuthenticationPrincipal Long userId,
-                                          @PathVariable Long storeId) {
+    public ResponseEntity<Void> saveStore(@AuthenticationPrincipal UUID userId,
+                                          @PathVariable UUID storeId) {
         storeService.saveStore(userId, storeId);
         return ResponseEntity.ok().build();
     }
 
     /** 저장 해제. 저장돼 있지 않아도 200. */
     @DeleteMapping("/{storeId}/save")
-    public ResponseEntity<Void> unsaveStore(@AuthenticationPrincipal Long userId,
-                                            @PathVariable Long storeId) {
+    public ResponseEntity<Void> unsaveStore(@AuthenticationPrincipal UUID userId,
+                                            @PathVariable UUID storeId) {
         storeService.unsaveStore(userId, storeId);
         return ResponseEntity.ok().build();
     }

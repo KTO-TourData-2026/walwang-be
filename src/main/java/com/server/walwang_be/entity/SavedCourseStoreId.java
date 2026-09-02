@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.UUID;
 
 /** SavedCourseStore의 복합 키. */
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -13,6 +14,6 @@ import java.io.Serializable;
 @EqualsAndHashCode
 public class SavedCourseStoreId implements Serializable {
 
-    private Long course;
+    private UUID course;
     private int arrivalOrder;
 }

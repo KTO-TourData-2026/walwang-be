@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/reviews")
 @RequiredArgsConstructor
@@ -36,7 +38,7 @@ public class ReviewController {
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReviewCreateResponse> create(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestPart("data") @Valid ReviewCreateRequest data,
             @RequestPart(value = "photo", required = false) MultipartFile photo) {
         return ResponseEntity.ok(reviewService.create(userId, data, photo));
@@ -50,16 +52,16 @@ public class ReviewController {
      */
     @PostMapping(value = "/receipt-verify", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReceiptVerifyResponse> verifyReceipt(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestPart("receipt") MultipartFile receipt,
-            @RequestParam("store_id") Long storeId) {
+            @RequestParam("store_id") UUID storeId) {
         return ResponseEntity.ok(reviewService.verifyReceipt(userId, storeId, receipt));
     }
 
     /** 내 리뷰 삭제. 남의 리뷰면 403. */
     @DeleteMapping("/{reviewId}")
-    public ResponseEntity<Void> delete(@AuthenticationPrincipal Long userId,
-                                       @PathVariable Long reviewId) {
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal UUID userId,
+                                       @PathVariable UUID reviewId) {
         reviewService.delete(userId, reviewId);
         return ResponseEntity.ok().build();
     }

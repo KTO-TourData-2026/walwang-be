@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 회원 탈퇴.
@@ -50,7 +51,7 @@ public class UserWithdrawalService {
     private final JwtProvider jwtProvider;
 
     @Transactional
-    public void withdraw(Long userId, String accessToken) {
+    public void withdraw(UUID userId, String accessToken) {
         if (!userRepository.existsById(userId)) {
             throw new BadCredentialsException("존재하지 않는 사용자입니다.");
         }

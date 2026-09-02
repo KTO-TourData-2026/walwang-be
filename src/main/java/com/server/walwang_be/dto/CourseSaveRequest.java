@@ -10,6 +10,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 코스 저장 요청.
@@ -28,6 +29,6 @@ public record CourseSaveRequest(
         List<List<Double>> walkPath,
         @Size(max = 500) String description,
         /** 순서가 곧 arrivalOrder다. */
-        @NotEmpty List<Long> storeIds
+        @NotEmpty List<UUID> storeIds
 ) {
 }

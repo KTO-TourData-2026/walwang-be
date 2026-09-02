@@ -2,6 +2,8 @@ package com.server.walwang_be.dto;
 
 import com.server.walwang_be.entity.User;
 
+import java.util.UUID;
+
 /**
  * 마이 화면에 쓰는 내 정보.
  *
@@ -9,7 +11,7 @@ import com.server.walwang_be.entity.User;
  * 응답만 봐서는 전체가 몇 개인지 알 수 없다.
  */
 public record UserProfileResponse(
-        Long userId,
+        UUID userId,
         String email,
         String nickname,
         int reviewCount,

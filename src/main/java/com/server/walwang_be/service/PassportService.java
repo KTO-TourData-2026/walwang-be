@@ -48,7 +48,7 @@ public class PassportService {
     private final SupabaseStorageClient storageClient;
 
     @Transactional(readOnly = true)
-    public List<PassportSummaryResponse> findMine(Long userId, int page, int size) {
+    public List<PassportSummaryResponse> findMine(UUID userId, int page, int size) {
         return passportRepository
                 .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
                 .map(PassportSummaryResponse::from)
@@ -57,7 +57,7 @@ public class PassportService {
 
     /** 남의 여권은 존재를 알려주지 않고 403으로 끊는다. */
     @Transactional(readOnly = true)
-    public PassportDetailResponse findOne(Long userId, Long passportId) {
+    public PassportDetailResponse findOne(UUID userId, UUID passportId) {
         Passport passport = passportRepository.findWithReviewByPassportId(passportId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 여권입니다."));
 
@@ -91,7 +91,7 @@ public class PassportService {
      * 다른 스레드에서 도므로 커밋 전에는 여권 행이 보이지 않는다.
      */
     @Async("stampExecutor")
-    public void generateStampAsync(Long passportId) {
+    public void generateStampAsync(UUID passportId) {
         try {
             generateStamp(passportId);
         } catch (Exception e) {
@@ -102,7 +102,7 @@ public class PassportService {
     }
 
     @Transactional
-    public void generateStamp(Long passportId) {
+    public void generateStamp(UUID passportId) {
         Passport passport = passportRepository.findWithReviewByPassportId(passportId)
                 .orElse(null);
         if (passport == null || passport.getStatus() != StampStatus.PENDING) {

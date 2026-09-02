@@ -47,7 +47,7 @@ public class UserService {
 
     /** 마이 화면. 리뷰·도장·저장 개수는 목록 API가 페이징이라 여기서 따로 센다. */
     @Transactional(readOnly = true)
-    public UserProfileResponse findMe(Long userId) {
+    public UserProfileResponse findMe(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
 
@@ -59,7 +59,7 @@ public class UserService {
 
     /** 내가 쓴 리뷰 목록. 최신순. */
     @Transactional(readOnly = true)
-    public List<MyReviewResponse> findMyReviews(Long userId, int page, int size) {
+    public List<MyReviewResponse> findMyReviews(UUID userId, int page, int size) {
         return reviewRepository
                 .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
                 .map(MyReviewResponse::from)
@@ -108,7 +108,7 @@ public class UserService {
      * 탈취된 토큰이 나중에 재사용되면 이미 삭제된 상태라 통과하지 못한다.
      */
     public TokenResponse reissue(String refreshToken) {
-        Long userId = refreshTokenRepository.findUserId(refreshToken)
+        UUID userId = refreshTokenRepository.findUserId(refreshToken)
                 .orElseThrow(() -> new BadCredentialsException("유효하지 않은 refresh token 입니다."));
 
         refreshTokenRepository.delete(refreshToken);
@@ -137,7 +137,7 @@ public class UserService {
      * @return 새로 발급된 토큰 쌍
      */
     @Transactional
-    public TokenResponse updateMe(Long userId, String currentAccessToken, UserPatchRequest request) {
+    public TokenResponse updateMe(UUID userId, String currentAccessToken, UserPatchRequest request) {
         if (request.hasPartialPasswordChange()) {
             throw new IllegalArgumentException("비밀번호를 변경하려면 기존 비밀번호와 새 비밀번호를 함께 보내야 합니다.");
         }
@@ -177,7 +177,7 @@ public class UserService {
         return userRepository.existsByNickname(nickname);
     }
 
-    private TokenResponse issueTokens(Long userId) {
+    private TokenResponse issueTokens(UUID userId) {
         String accessToken = jwtProvider.createAccessToken(userId);
         String refreshToken = UUID.randomUUID().toString();
         refreshTokenRepository.save(refreshToken, userId);

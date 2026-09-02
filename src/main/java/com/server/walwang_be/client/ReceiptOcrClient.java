@@ -2,6 +2,8 @@ package com.server.walwang_be.client;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.UUID;
+
 /**
  * 영수증에서 상호명을 읽어 등록된 가게명과 대조하는 AI 서비스.
  *
@@ -16,7 +18,7 @@ public interface ReceiptOcrClient {
      * @throws OcrUnreadableException  글자를 못 읽었을 때 (422)
      * @throws OcrUnavailableException OCR 서버가 죽었거나 응답이 늦을 때 (503)
      */
-    OcrResult verify(MultipartFile receipt, Long storeId, String storeName);
+    OcrResult verify(MultipartFile receipt, UUID storeId, String storeName);
 
     /**
      * @param matchedName OCR이 읽어낸 상호명

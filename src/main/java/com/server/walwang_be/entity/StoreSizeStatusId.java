@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.UUID;
 
 /**
  * StoreSizeStatus의 복합 키.
@@ -16,6 +17,6 @@ import java.io.Serializable;
 @EqualsAndHashCode
 public class StoreSizeStatusId implements Serializable {
 
-    private Long store;
+    private UUID store;
     private DogSize size;
 }

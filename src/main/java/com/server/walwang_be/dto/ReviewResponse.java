@@ -6,10 +6,11 @@ import com.server.walwang_be.entity.StoreTag;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /** 가게에 달린 리뷰 한 건. */
 public record ReviewResponse(
-        Long reviewId,
+        UUID reviewId,
         String nickname,
         boolean dogAllowed,
         DogSize dogSize,
