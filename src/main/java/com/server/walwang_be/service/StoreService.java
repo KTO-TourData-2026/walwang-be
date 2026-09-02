@@ -126,14 +126,6 @@ public class StoreService {
      * 가게마다 상태를 따로 조회하면 N+1이 되므로 한 번에 읽어 메모리에서 묶는다.
      */
     List<StoreCardResponse> toCards(List<Store> stores, DogSize size, boolean demo) {
-        return toCards(stores, size, demo, false);
-    }
-
-    /**
-     * @param petVerified 공사 데이터와 매칭된 목록이면 true
-     */
-    List<StoreCardResponse> toCards(List<Store> stores, DogSize size, boolean demo,
-                                    boolean petVerified) {
         if (stores.isEmpty()) {
             return List.of();
         }
@@ -146,8 +138,7 @@ public class StoreService {
 
         return stores.stream()
                 .map(store -> StoreCardResponse.of(store,
-                        toSizeStatus(statusByStore.getOrDefault(store.getStoreId(), List.of()), size),
-                        demo, petVerified))
+                        toSizeStatus(statusByStore.getOrDefault(store.getStoreId(), List.of()), size), demo))
                 .toList();
     }
 

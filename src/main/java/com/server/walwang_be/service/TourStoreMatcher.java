@@ -315,15 +315,6 @@ public class TourStoreMatcher {
     public record Match(UUID storeId, String externalId, String storeName, String address,
                         double distanceMeters, int candidateCount,
                         String stage, double similarity) {
-
-        public Map<String, Object> toResponse() {
-            return Map.of(
-                    "storeId", storeId,
-                    "storeName", storeName,
-                    "distanceMeters", Math.round(distanceMeters * 10) / 10.0,
-                    // 공사 데이터에 있으면 반려동물 동반이 확인된 곳이다.
-                    "petVerified", true);
-        }
     }
 
     public record Pair(String tourTitle, Match match) {

@@ -85,7 +85,7 @@ public class MapStoreService {
                 .toList();
 
         // 크기별 상태는 StoreService가 한 번에 읽어 붙인다(N+1 방지).
-        return storeService.toCards(excludeImpossible(inView, size), size, demo, true);
+        return storeService.toCards(excludeImpossible(inView, size), size, demo);
     }
 
     /**

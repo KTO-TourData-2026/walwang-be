@@ -22,17 +22,9 @@ public record StoreCardResponse(
         String type,
         List<SizeStatusResponse> sizeStatus,
         /** 화면에 보여줄 이름. 시연 모드에서 가명이 있을 때만 storeName과 달라진다. */
-        String displayName,
-        /** 반려동물 동반이 공사 데이터로 확인되었는지. */
-        boolean petVerified
+        String displayName
 ) {
-    /** 매칭 여부를 모르는 자리(검색·저장 목록)에서 쓴다. */
     public static StoreCardResponse of(Store store, List<SizeStatusResponse> sizeStatus, boolean demo) {
-        return of(store, sizeStatus, demo, false);
-    }
-
-    public static StoreCardResponse of(Store store, List<SizeStatusResponse> sizeStatus,
-                                       boolean demo, boolean petVerified) {
         return new StoreCardResponse(
                 store.getStoreId(),
                 store.getName(),
@@ -40,7 +32,6 @@ public record StoreCardResponse(
                 store.getAddress(),
                 store.getType(),
                 sizeStatus,
-                store.displayName(demo),
-                petVerified);
+                store.displayName(demo));
     }
 }
