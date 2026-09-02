@@ -107,6 +107,17 @@ public class StoreService {
         savedStoreRepository.deleteByUser_UserIdAndStore_StoreId(userId, storeId);
     }
 
+    /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
+    public List<StoreCardResponse> findSavedStores(Long userId, int page, int size) {
+        List<Store> stores = savedStoreRepository
+                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+                .map(SavedStore::getStore)
+                .getContent();
+
+        // 저장 순서를 유지해야 하므로 toCards가 넘겨받은 순서를 그대로 쓴다.
+        return toCards(stores, null);
+    }
+
     /**
      * 가게 목록에 크기별 상태를 붙인다.
      * 가게마다 상태를 따로 조회하면 N+1이 되므로 한 번에 읽어 메모리에서 묶는다.

@@ -27,4 +27,16 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
      */
     @EntityGraph(attributePaths = "tags")
     List<Review> findByStore_StoreId(Long storeId);
+
+    /** 회원 탈퇴 시 사진까지 지우려면 URL이 필요해 엔티티로 받는다. */
+    List<Review> findByUser_UserId(Long userId);
+
+    /**
+     * 내 리뷰 목록. 화면에 가게명·업종이 함께 나가므로 store를 같이 끌어온다.
+     * tags는 컬렉션이라 넣지 않는다 — 페이징이 메모리에서 일어나 버린다.
+     */
+    @EntityGraph(attributePaths = "store")
+    Page<Review> findByUser_UserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+
+    long countByUser_UserId(Long userId);
 }

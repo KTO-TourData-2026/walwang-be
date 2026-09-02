@@ -1,7 +1,5 @@
 package com.server.walwang_be.dto;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.server.walwang_be.entity.DogSize;
 import com.server.walwang_be.entity.StoreTag;
 import jakarta.validation.constraints.NotBlank;
@@ -15,7 +13,6 @@ import java.util.List;
  *
  * is_mock은 여기에 없다 — 클라이언트가 정할 값이 아니라 서버가 항상 false로 박는다.
  */
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record ReviewCreateRequest(
         @NotNull Long storeId,
         @NotBlank String receiptToken,

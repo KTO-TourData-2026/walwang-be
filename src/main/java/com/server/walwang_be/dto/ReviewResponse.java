@@ -1,7 +1,5 @@
 package com.server.walwang_be.dto;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.server.walwang_be.entity.DogSize;
 import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.StoreTag;
@@ -10,7 +8,6 @@ import java.time.Instant;
 import java.util.List;
 
 /** 가게에 달린 리뷰 한 건. */
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record ReviewResponse(
         Long reviewId,
         String nickname,

@@ -4,16 +4,22 @@ import com.server.walwang_be.dto.AgreementRequest;
 import com.server.walwang_be.dto.LoginRequest;
 import com.server.walwang_be.dto.SignUpRequest;
 import com.server.walwang_be.dto.TokenResponse;
+import com.server.walwang_be.dto.MyReviewResponse;
 import com.server.walwang_be.dto.UserPatchRequest;
+import com.server.walwang_be.dto.UserProfileResponse;
 import com.server.walwang_be.entity.TermCode;
 import com.server.walwang_be.entity.User;
 import com.server.walwang_be.entity.UserAgreement;
+import com.server.walwang_be.repo.PassportRepository;
 import com.server.walwang_be.repo.RefreshTokenRepository;
+import com.server.walwang_be.repo.ReviewRepository;
+import com.server.walwang_be.repo.SavedStoreRepository;
 import com.server.walwang_be.repo.TokenBlacklistRepository;
 import com.server.walwang_be.repo.UserAgreementRepository;
 import com.server.walwang_be.repo.UserRepository;
 import com.server.walwang_be.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,10 +37,34 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserAgreementRepository userAgreementRepository;
+    private final ReviewRepository reviewRepository;
+    private final PassportRepository passportRepository;
+    private final SavedStoreRepository savedStoreRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenBlacklistRepository tokenBlacklistRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+
+    /** 마이 화면. 리뷰·도장·저장 개수는 목록 API가 페이징이라 여기서 따로 센다. */
+    @Transactional(readOnly = true)
+    public UserProfileResponse findMe(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
+
+        return UserProfileResponse.of(user,
+                reviewRepository.countByUser_UserId(userId),
+                passportRepository.countByUser_UserId(userId),
+                savedStoreRepository.countByUser_UserId(userId));
+    }
+
+    /** 내가 쓴 리뷰 목록. 최신순. */
+    @Transactional(readOnly = true)
+    public List<MyReviewResponse> findMyReviews(Long userId, int page, int size) {
+        return reviewRepository
+                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+                .map(MyReviewResponse::from)
+                .getContent();
+    }
 
     @Transactional
     public void signUp(SignUpRequest request) {

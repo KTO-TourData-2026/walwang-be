@@ -13,6 +13,8 @@ import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.StoreSizeStatus;
 import com.server.walwang_be.entity.StoreTag;
 import com.server.walwang_be.entity.StoreTagCount;
+import com.server.walwang_be.entity.User;
+import com.server.walwang_be.repo.PassportRepository;
 import com.server.walwang_be.repo.ReceiptTokenRepository;
 import com.server.walwang_be.repo.ReviewRepository;
 import com.server.walwang_be.repo.StoreRepository;
@@ -62,7 +64,8 @@ public class ReviewService {
     private final SupabaseStorageClient storageClient;
     private final ImageProcessor imageProcessor;
     private final ReceiptOcrClient ocrClient;
-    private final PawStampClient pawStampClient;
+    private final PassportService passportService;
+    private final PassportRepository passportRepository;
 
     /**
      * 영수증 인증. 상호명이 맞으면 30분짜리 토큰을 내주고,
@@ -76,8 +79,12 @@ public class ReviewService {
 
         // 읽기 실패(422)와 OCR 장애(503)는 클라이언트가 다르게 대응해야 하므로
         // 여기서 잡지 않고 예외 그대로 올려보낸다.
-        String matchedName = ocrClient.readStoreName(receipt);
-        double similarity = StoreNameMatcher.similarity(store.getName(), matchedName);
+        ReceiptOcrClient.OcrResult ocr = ocrClient.verify(receipt, storeId, store.getName());
+        String matchedName = ocr.matchedName();
+
+        // 통과 기준은 AI가 준 verified가 아니라 우리가 정한다 —
+        // 임계값을 조정할 때 AI 서비스를 다시 배포하지 않아도 되게 하려는 것이다.
+        double similarity = ocr.similarity();
 
         if (similarity < StoreNameMatcher.THRESHOLD) {
             return ReceiptVerifyResponse.mismatch(matchedName, similarity);
@@ -107,8 +114,9 @@ public class ReviewService {
             thumbnailUrl = storageClient.upload(base + "-thumb.jpg", processed.thumbnail(), MediaType.IMAGE_JPEG);
         }
 
+        User user = userRepository.getReferenceById(userId);
         Review review = reviewRepository.save(Review.builder()
-                .user(userRepository.getReferenceById(userId))
+                .user(user)
                 .store(store)
                 .dogAllowed(request.dogAllowed())
                 .dogSize(request.dogSize())
@@ -123,9 +131,20 @@ public class ReviewService {
         reviewRepository.flush();
         recompute(store);
 
+        // 도장은 동반 가능했던 방문에만 찍는다 — 거절당한 기록은 여권에 남기지 않는다.
+        Long passportId = request.dogAllowed()
+                ? passportService.createFor(user, store, review).getPassportId()
+                : null;
+        if (passportId != null) {
+            // 세그멘테이션은 오래 걸려 여기서 기다리지 않는다.
+            // 다른 스레드에서 도므로 커밋이 끝난 뒤에 넘겨야 여권 행이 보인다.
+            afterCommit(() -> passportService.generateStampAsync(passportId));
+        }
+
         return new ReviewCreateResponse(
                 review.getReviewId(),
-                pawStampClient.createStamp(photoUrl),
+                // 실제 도장은 여권에서 확인한다. 여기서는 항상 기본 발도장이 나간다.
+                PawStampClient.DEFAULT_STAMP_URL,
                 summarize(store));
     }
 
@@ -143,6 +162,8 @@ public class ReviewService {
         String photoUrl = review.getPhotoUrl();
         String thumbnailUrl = review.getThumbnailUrl();
 
+        // 여권이 리뷰를 참조하므로 먼저 지운다. 다녀온 증거가 사라지면 도장도 남지 않는다.
+        passportRepository.deleteByReview_ReviewId(reviewId);
         reviewRepository.delete(review);
         // 재집계가 삭제된 리뷰를 다시 세지 않도록 먼저 DB에 반영한다.
         reviewRepository.flush();
@@ -159,14 +180,19 @@ public class ReviewService {
      * 반대로 커밋 후 삭제가 실패하면 고아 파일이 남을 뿐이라 화면은 멀쩡하다.
      */
     private void deletePhotosAfterCommit(String... publicUrls) {
+        afterCommit(() -> deletePhotos(publicUrls));
+    }
+
+    /** 롤백되면 되돌릴 수 없는 일(파일 삭제, 외부 호출)은 커밋 확정 후에 한다. */
+    private void afterCommit(Runnable action) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            deletePhotos(publicUrls);
+            action.run();
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                deletePhotos(publicUrls);
+                action.run();
             }
         });
     }
@@ -205,7 +231,7 @@ public class ReviewService {
      * 등록·삭제 양쪽에서 같은 함수를 부르는 게 핵심이다.
      * 더하고 빼는 방식이면 시간가중 점수가 원래대로 돌아오지 않아 오차가 쌓인다.
      */
-    private void recompute(Store store) {
+    public void recompute(Store store) {
         List<Review> reviews = reviewRepository.findByStore_StoreId(store.getStoreId());
         Instant now = Instant.now();
 

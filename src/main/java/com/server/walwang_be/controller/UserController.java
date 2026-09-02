@@ -1,13 +1,21 @@
 package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.LoginRequest;
+import com.server.walwang_be.dto.MyReviewResponse;
+import com.server.walwang_be.dto.PassportDetailResponse;
+import com.server.walwang_be.dto.PassportSummaryResponse;
 import com.server.walwang_be.dto.RefreshTokenResponse;
 import com.server.walwang_be.dto.SignUpRequest;
 import com.server.walwang_be.dto.TokenRequest;
 import com.server.walwang_be.dto.TokenResponse;
+import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.UserPatchRequest;
+import com.server.walwang_be.dto.UserProfileResponse;
 import com.server.walwang_be.security.BearerTokenResolver;
+import com.server.walwang_be.service.PassportService;
+import com.server.walwang_be.service.StoreService;
 import com.server.walwang_be.service.UserService;
+import com.server.walwang_be.service.UserWithdrawalService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -18,7 +26,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+
+import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,6 +49,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final UserWithdrawalService userWithdrawalService;
+    private final PassportService passportService;
+    private final StoreService storeService;
 
     @PostMapping("/signUp")
     public ResponseEntity<Void> signUp(@Valid @RequestBody SignUpRequest request) {
@@ -92,6 +110,59 @@ public class UserController {
         TokenResponse tokens = userService.updateMe(
                 userId, BearerTokenResolver.resolve(authorization), request);
         return toTokenResponse(tokens);
+    }
+
+    /**
+     * 회원 탈퇴. 작성한 리뷰·저장한 가게·코스가 함께 사라지고,
+     * 쓰던 토큰도 즉시 무효화된다. 되돌릴 수 없다.
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(
+            @AuthenticationPrincipal Long userId,
+            @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+        userWithdrawalService.withdraw(userId, BearerTokenResolver.resolve(authorization));
+        return ResponseEntity.ok().build();
+    }
+
+    /** 마이 화면. 닉네임과 함께 리뷰 수·모은 도장 수·저장 장소 수가 나간다. */
+    @GetMapping("/me")
+    public ResponseEntity<UserProfileResponse> findMe(@AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(userService.findMe(userId));
+    }
+
+    /** 내가 쓴 리뷰 목록. 최신순. */
+    @GetMapping("/me/reviews")
+    public ResponseEntity<List<MyReviewResponse>> findMyReviews(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(userService.findMyReviews(userId, page, size));
+    }
+
+    /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
+    @GetMapping("/store")
+    public ResponseEntity<List<StoreCardResponse>> findSavedStores(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(storeService.findSavedStores(userId, page, size));
+    }
+
+    /** 여권 미리보기. 최신 도장부터. */
+    @GetMapping("/me/passport")
+    public ResponseEntity<List<PassportSummaryResponse>> findMyPassport(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size) {
+        return ResponseEntity.ok(passportService.findMine(userId, page, size));
+    }
+
+    /** 여권 도장 상세. 남의 여권이면 403. */
+    @GetMapping("/me/passport/{passportId}")
+    public ResponseEntity<PassportDetailResponse> findMyPassportDetail(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long passportId) {
+        return ResponseEntity.ok(passportService.findOne(userId, passportId));
     }
 
     private ResponseEntity<RefreshTokenResponse> toTokenResponse(TokenResponse tokens) {
