@@ -70,6 +70,7 @@ public class ReviewService {
     private final ReceiptOcrClient ocrClient;
     private final PassportService passportService;
     private final PassportRepository passportRepository;
+    private final EmbeddingService embeddingService;
 
     /**
      * 영수증 인증. 상호명이 맞으면 30분짜리 토큰을 내주고,
@@ -147,6 +148,10 @@ public class ReviewService {
             afterCommit(() -> passportService.generateStampAsync(passportId));
         }
 
+        // 리뷰가 하나 붙으면 그 가게의 설명이 달라진다. AI가 벡터를 다시 계산하도록
+        // 알려만 둔다 — 실패해도 리뷰 등록은 그대로 성공이다.
+        afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
+
         return new ReviewCreateResponse(
                 review.getReviewId(),
                 // 실제 도장은 여권에서 확인한다. 여기서는 항상 기본 발도장이 나간다.
@@ -178,6 +183,8 @@ public class ReviewService {
 
         recompute(store);
         deletePhotosAfterCommit(photoUrl, thumbnailUrl);
+        // 리뷰가 빠져도 가게 설명이 달라진다. 등록 때와 같은 이유로 갱신을 알린다.
+        afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
     }
 
     /**
@@ -239,6 +246,10 @@ public class ReviewService {
      * 관리자가 리뷰를 가린 뒤 부르는 자리다. blind_status를 DB에서 직접 바꾸면
      * 등록·삭제 어느 쪽도 아니라 recompute가 저절로 돌지 않는다 —
      * 그대로 두면 목록에서는 사라진 리뷰가 점수에는 남는다.
+     *
+     * 임베딩 갱신도 여기서 같이 알린다 — 가려진 리뷰의 문장이 임베딩에 남아 있으면
+     * 화면에서 지운 표현으로 그 가게가 검색된다. demo=true는 부르지 않는다.
+     * 목 데이터는 AI팀이 DB에 직접 넣으면서 임베딩까지 함께 채운다.
      */
     @Transactional
     public RecomputeResultResponse recomputeStore(UUID storeId, boolean demo) {
@@ -259,6 +270,9 @@ public class ReviewService {
                         .map(RecomputeResultResponse.SizeResult::from)
                         .toList();
 
+        if (!demo) {
+            afterCommit(() -> embeddingService.refreshAsync(storeId));
+        }
         return new RecomputeResultResponse(storeId, store.getName(), counted, sizes);
     }
 

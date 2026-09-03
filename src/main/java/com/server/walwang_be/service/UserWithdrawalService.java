@@ -36,6 +36,8 @@ import java.util.UUID;
  *
  * 리뷰를 지우면 그 리뷰가 반영돼 있던 가게 점수도 다시 세야 하므로
  * ReviewService의 재집계를 그대로 빌려 쓴다.
+ *
+ * 임베딩도 같은 목록을 쓴다 — 점수가 달라진 가게는 설명도 달라졌다는 뜻이다.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +54,7 @@ public class UserWithdrawalService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenBlacklistRepository tokenBlacklistRepository;
     private final ReviewService reviewService;
+    private final EmbeddingService embeddingService;
     private final SupabaseStorageClient storageClient;
     private final JwtProvider jwtProvider;
 
@@ -90,6 +93,9 @@ public class UserWithdrawalService {
         reviewRepository.flush();
 
         affectedStores.forEach(reviewService::recompute);
+        // 재집계와 대상이 같다. 다만 커밋 뒤에 불러야 해서 id만 미리 빼둔다 —
+        // 그때는 엔티티가 준영속이라 새로 읽어올 수 없다.
+        List<UUID> storeIdsToRefresh = affectedStores.stream().map(Store::getStoreId).toList();
         userRepository.deleteById(userId);
 
         // 자진 탈퇴는 기록만 남고 재가입을 막지 않는다(WithdrawalReason 참고).
@@ -103,6 +109,10 @@ public class UserWithdrawalService {
             }
             photoUrls.forEach(storageClient::deleteByPublicUrlQuietly);
         });
+
+        // 리뷰가 통째로 빠지면 그 가게의 설명도 달라진다. 리뷰 삭제와 같은 이유로 갱신을 알린다.
+        // 목록에서 이미 중복이 걸러져 가게당 한 번만 나간다.
+        afterCommit(() -> storeIdsToRefresh.forEach(embeddingService::refreshAsync));
     }
 
     private void addIfPresent(List<String> target, String value) {

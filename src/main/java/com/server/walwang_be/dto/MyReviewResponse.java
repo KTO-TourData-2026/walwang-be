@@ -25,12 +25,13 @@ public record MyReviewResponse(
         String thumbnailUrl,
         Instant createdAt
 ) {
-    public static MyReviewResponse from(Review review) {
+    /** @param demo 시연 모드면 가게 가명을 담는다. */
+    public static MyReviewResponse from(Review review, boolean demo) {
         Store store = review.getStore();
         return new MyReviewResponse(
                 review.getReviewId(),
                 store.getStoreId(),
-                store.getName(),
+                store.displayName(demo),
                 store.getType(),
                 review.isDogAllowed(),
                 review.getDogSize(),

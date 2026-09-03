@@ -46,14 +46,14 @@ public class PassportService {
 
     /** 남의 여권은 존재를 알려주지 않고 403으로 끊는다. */
     @Transactional(readOnly = true)
-    public PassportDetailResponse findOne(UUID userId, UUID passportId) {
+    public PassportDetailResponse findOne(UUID userId, UUID passportId, boolean demo) {
         Passport passport = passportRepository.findWithReviewByPassportId(passportId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 여권입니다."));
 
         if (!passport.getUser().getUserId().equals(userId)) {
             throw new AccessDeniedException("자신의 여권만 볼 수 있습니다.");
         }
-        return PassportDetailResponse.from(passport);
+        return PassportDetailResponse.from(passport, demo);
     }
 
     /**

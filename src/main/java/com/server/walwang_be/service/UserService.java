@@ -61,11 +61,11 @@ public class UserService {
 
     /** 내가 쓴 리뷰 목록. 최신순. */
     @Transactional(readOnly = true)
-    public List<MyReviewResponse> findMyReviews(UUID userId, int page, int size) {
+    public List<MyReviewResponse> findMyReviews(UUID userId, int page, int size, boolean demo) {
         return reviewRepository
                 .findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
                         userId, BlindStatus.NORMAL, PageRequest.of(page, size))
-                .map(MyReviewResponse::from)
+                .map(review -> MyReviewResponse.from(review, demo))
                 .getContent();
     }
 

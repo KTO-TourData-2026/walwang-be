@@ -140,8 +140,9 @@ public class UserController {
     public ResponseEntity<List<MyReviewResponse>> findMyReviews(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(userService.findMyReviews(userId, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(userService.findMyReviews(userId, page, size, demo));
     }
 
     /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
@@ -149,8 +150,9 @@ public class UserController {
     public ResponseEntity<List<StoreCardResponse>> findSavedStores(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(storeService.findSavedStores(userId, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(storeService.findSavedStores(userId, page, size, demo));
     }
 
     /** 저장한 코스 목록. 카드에 필요한 것만 담고 경로선은 빼서 내려준다. */
@@ -185,8 +187,9 @@ public class UserController {
     @GetMapping("/me/passport/{passportId}")
     public ResponseEntity<PassportDetailResponse> findMyPassportDetail(
             @AuthenticationPrincipal UUID userId,
-            @PathVariable UUID passportId) {
-        return ResponseEntity.ok(passportService.findOne(userId, passportId));
+            @PathVariable UUID passportId,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(passportService.findOne(userId, passportId, demo));
     }
 
     private ResponseEntity<RefreshTokenResponse> toTokenResponse(TokenResponse tokens) {

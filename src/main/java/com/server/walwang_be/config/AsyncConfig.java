@@ -39,6 +39,26 @@ public class AsyncConfig {
         return executor;
     }
 
+    /**
+     * 임베딩 갱신용.
+     *
+     * 도장 풀과 나눈다 — 세그멘테이션이 수십 초씩 붙잡고 있는 사이에
+     * 짧게 끝날 갱신 호출까지 같이 밀리면 안 된다.
+     */
+    @Bean("embeddingExecutor")
+    public Executor embeddingExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("embedding-");
+        // 큐가 넘치면 그냥 버린다. 다음 리뷰가 들어오면 어차피 다시 갱신된다.
+        executor.setRejectedExecutionHandler((task, rejected) -> {
+        });
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("stampExecutor")
     public Executor stampExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

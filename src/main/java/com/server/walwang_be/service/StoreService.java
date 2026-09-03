@@ -144,14 +144,14 @@ public class StoreService {
     }
 
     /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
-    public List<StoreCardResponse> findSavedStores(UUID userId, int page, int size) {
+    public List<StoreCardResponse> findSavedStores(UUID userId, int page, int size, boolean demo) {
         List<Store> stores = savedStoreRepository
                 .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
                 .map(SavedStore::getStore)
                 .getContent();
 
         // 저장 순서를 유지해야 하므로 toCards가 넘겨받은 순서를 그대로 쓴다.
-        return toCards(stores, null, false);
+        return toCards(stores, null, demo);
     }
 
     /**

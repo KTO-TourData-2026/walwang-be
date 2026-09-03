@@ -65,6 +65,7 @@ public class CourseService {
     private final NearbyPlaceFinder nearbyPlaceFinder;
     private final TourVerifier tourVerifier;
     private final StoreCandidates storeCandidates;
+    private final EmbeddingService embeddingService;
 
     /**
      * 코스 추천.
@@ -97,8 +98,12 @@ public class CourseService {
             relaxed = true;
         }
 
-        candidates = rankCandidates(candidates, demo);
-        List<Store> route = buildRoute(candidates, request.lat(), request.lng(), duration.maxStores());
+        // 유사도로 "어디를 갈지"를 먼저 정하고, 그 안에서 "어떤 순서로 걸을지"를 짠다.
+        // 벡터를 못 받으면 예전처럼 후보 전체를 거리순 동선에 그대로 맡긴다.
+        List<Store> selected = rankCandidates(candidates, request.tags(), demo)
+                .map(ranked -> pickWithinWalkBudget(ranked, request.lat(), request.lng(), duration))
+                .orElse(candidates);
+        List<Store> route = buildRoute(selected, request.lat(), request.lng(), duration.maxStores());
         Walk walk = walk(route, request.lat(), request.lng());
 
         return new CourseResponse(
@@ -222,27 +227,33 @@ public class CourseService {
     }
 
     /**
-     * 후보 순서를 정한다.
+     * 후보를 벡터 유사도순으로 줄 세운다.
      *
-     * 임베딩이 있으면 벡터 유사도로 줄을 세우고, 없으면 그대로 둬서 거리순 경로 구성에 맡긴다.
      * 실제 모드에는 리뷰가 없어 임베딩도 없는데, 그건 오류가 아니라 정상 경로다 —
      * 시연이든 아니든 같은 코드가 돌고 파라미터만 달라진다.
      *
-     * 기준 벡터(queryEmbedding)는 아직 AI 쪽에서 오지 않아 지금은 늘 폴백을 탄다.
-     * 연결되면 이 메서드 안에서만 바뀐다.
+     * 기준 벡터는 사용자가 고른 태그로 AI에서 받아온다. 태그가 없거나 AI가 답하지
+     * 않으면 null이 온다.
+     *
+     * @return 유사도순 후보. 줄을 세우지 못했으면 비어 있다 —
+     *         부르는 쪽은 후보를 손대지 않고 거리순으로 간다
      */
-    private List<Store> rankCandidates(List<Store> candidates, boolean demo) {
+    private Optional<List<Store>> rankCandidates(List<Store> candidates, List<String> tags, boolean demo) {
         if (candidates.isEmpty()) {
-            return candidates;
+            return Optional.empty();
         }
         List<UUID> ids = candidates.stream().map(Store::getStoreId).toList();
         if (!placeEmbeddingRepository.existsAny(ids, demo)) {
-            // 임베딩이 하나도 없다 -> 거리순으로 간다.
-            return candidates;
+            // 임베딩이 하나도 없다 -> 거리순으로 간다. AI를 부를 필요도 없다.
+            return Optional.empty();
         }
-        List<UUID> ranked = placeEmbeddingRepository.rankBySimilarity(queryEmbedding(), ids, demo);
+        float[] query = embeddingService.queryEmbedding(tags);
+        if (query == null) {
+            return Optional.empty();
+        }
+        List<UUID> ranked = placeEmbeddingRepository.rankBySimilarity(query, ids, demo);
         if (ranked.isEmpty()) {
-            return candidates;
+            return Optional.empty();
         }
         Map<UUID, Store> byId = candidates.stream()
                 .collect(Collectors.toMap(Store::getStoreId, store -> store));
@@ -256,15 +267,44 @@ public class CourseService {
         });
         // 임베딩이 없는 후보는 뒤에 붙인다. 버리면 코스가 짧아진다.
         ordered.addAll(byId.values());
-        return ordered;
+        return Optional.of(ordered);
     }
 
     /**
-     * 기준 벡터. AI 추천 모델이 붙기 전까지는 없다.
-     * null 을 돌려주면 rankBySimilarity 가 빈 목록을 주고 거리순으로 폴백된다.
+     * 유사도 상위부터 코스에 담되, 총 도보 거리가 예산을 넘기면 그 곳은 건너뛰고
+     * 다음 후보로 넘어간다.
+     *
+     * 유사도만 보고 뽑으면 잘 맞는 세 곳이 3km씩 떨어져 있는 코스가 나온다 —
+     * 하나하나는 맞는 추천인데 묶어 놓으면 걸어서 갈 수 없다.
+     *
+     * 거리는 직선 추정이다. 실제 도보는 이보다 조금 더 나오지만,
+     * 티맵을 후보 조합마다 부를 수는 없어 여기서는 추정으로 거른다.
+     *
+     * 예산 안에 드는 곳이 하나도 없으면 손대지 않고 돌려준다 —
+     * 빈 코스를 주느니 거리순으로라도 채우는 편이 낫다.
      */
-    private float[] queryEmbedding() {
-        return null;
+    private List<Store> pickWithinWalkBudget(List<Store> ranked, double lat, double lng,
+                                             CourseDuration duration) {
+        List<Store> picked = new ArrayList<>(duration.maxStores());
+
+        for (Store candidate : ranked) {
+            if (picked.size() == duration.maxStores()) {
+                break;
+            }
+            List<Store> tentative = new ArrayList<>(picked);
+            tentative.add(candidate);
+
+            if (walkDistance(tentative, lat, lng) <= duration.maxWalkMeters()) {
+                picked.add(candidate);
+            }
+        }
+        return picked.isEmpty() ? ranked : picked;
+    }
+
+    /** 고른 곳들을 실제 동선(최근접 이웃)으로 이었을 때의 직선 추정 거리. */
+    private double walkDistance(List<Store> stores, double lat, double lng) {
+        List<Store> route = buildRoute(stores, lat, lng, stores.size());
+        return totalDistance(toWalkPath(route, lat, lng));
     }
 
     /**

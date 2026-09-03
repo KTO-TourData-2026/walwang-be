@@ -1,7 +1,9 @@
 package com.server.walwang_be.config;
 
+import com.server.walwang_be.client.AiEmbeddingClient;
 import com.server.walwang_be.client.AiPawStampClient;
 import com.server.walwang_be.client.AiReceiptOcrClient;
+import com.server.walwang_be.client.EmbeddingClient;
 import com.server.walwang_be.client.PawStampClient;
 import com.server.walwang_be.client.ReceiptOcrClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -9,7 +11,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * AI 서비스 연결.
@@ -52,5 +56,33 @@ public class AiClientConfig {
     @ConditionalOnMissingBean(PawStampClient.class)
     public PawStampClient stubPawStampClient() {
         return photo -> Optional.empty();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "ai.base-url")
+    public EmbeddingClient aiEmbeddingClient(AiProperties properties) {
+        return new AiEmbeddingClient(properties);
+    }
+
+    /**
+     * 임베딩이 연결되지 않았을 때.
+     *
+     * 갱신은 아무것도 하지 않는다 — 실패해도 리뷰 등록을 막지 않으므로
+     * 여기서 예외를 던질 이유가 없다.
+     * 기준 벡터는 빈 값을 준다 — 코스 추천이 거리순 폴백으로 내려간다.
+     */
+    @Bean
+    @ConditionalOnMissingBean(EmbeddingClient.class)
+    public EmbeddingClient stubEmbeddingClient() {
+        return new EmbeddingClient() {
+            @Override
+            public void refresh(UUID storeId) {
+            }
+
+            @Override
+            public Optional<float[]> query(List<String> tags) {
+                return Optional.empty();
+            }
+        };
     }
 }

@@ -19,7 +19,8 @@ public record PassportDetailResponse(
         String storeName,
         Instant createdAt
 ) {
-    public static PassportDetailResponse from(Passport passport) {
+    /** @param demo 시연 모드면 가게 가명을 담는다. */
+    public static PassportDetailResponse from(Passport passport, boolean demo) {
         return new PassportDetailResponse(
                 passport.getPassportId(),
                 passport.getStore().getStoreId(),
@@ -29,7 +30,7 @@ public record PassportDetailResponse(
                         : passport.getStampUrl(),
                 passport.getStatus(),
                 passport.getReview().getPhotoUrl(),
-                passport.getStore().getName(),
+                passport.getStore().displayName(demo),
                 passport.getCreatedAt());
     }
 }
