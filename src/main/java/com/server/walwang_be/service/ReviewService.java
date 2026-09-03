@@ -113,7 +113,9 @@ public class ReviewService {
         if (photo != null && !photo.isEmpty()) {
             validateImageFile(photo);
             ImageProcessor.ProcessedImage processed = imageProcessor.process(photo);
-            String base = "reviews/%d/%s".formatted(store.getStoreId(), UUID.randomUUID());
+            // storeId는 UUID다. %d로 찍으면 IllegalFormatConversionException이 나고,
+            // 트랜잭션 안이라 리뷰까지 통째로 롤백된다.
+            String base = "reviews/%s/%s".formatted(store.getStoreId(), UUID.randomUUID());
             photoUrl = storageClient.upload(base + "-original.jpg", processed.original(), MediaType.IMAGE_JPEG);
             thumbnailUrl = storageClient.upload(base + "-thumb.jpg", processed.thumbnail(), MediaType.IMAGE_JPEG);
         }
