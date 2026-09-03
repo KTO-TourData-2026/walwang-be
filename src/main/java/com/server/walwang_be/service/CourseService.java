@@ -54,8 +54,6 @@ public class CourseService {
     private static final double WALK_SPEED_METERS_PER_MINUTE = 70.0;
     /** 한 곳에 머무는 시간(분). 카페든 공원이든 일단 같게 본다. */
     private static final int DWELL_MINUTES_PER_STORE = 30;
-    /** 상세·코스 화면에 보여줄 태그 개수. */
-    private static final int TAG_LIMIT = 3;
 
     private final StoreRepository storeRepository;
     private final StoreSizeStatusRepository storeSizeStatusRepository;
@@ -66,6 +64,7 @@ public class CourseService {
     private final TmapClient tmapClient;
     private final NearbyPlaceFinder nearbyPlaceFinder;
     private final TourVerifier tourVerifier;
+    private final StoreCandidates storeCandidates;
 
     /**
      * 코스 추천.
@@ -78,31 +77,24 @@ public class CourseService {
         List<Store> nearby = storeRepository.findWithinRadius(
                 request.lat(), request.lng(), duration.searchRadius());
 
-        Map<UUID, StoreSizeStatus> statusByStore = loadStatuses(nearby, request.dogSize());
+        // 공사 목록과 리뷰 점수, 두 갈래의 근거를 모아 후보를 고른다.
+        Set<UUID> verified = tourVerifier.verifiedAmong(nearby);
+        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(nearby, request.dogSize());
 
-        // 1순위: 목적에 맞고, 동반 불가로 확인되지 않은 곳
-        List<Store> candidates = nearby.stream()
+        List<Store> pool = nearby.stream()
+                .filter(store -> storeCandidates.hasEvidence(store, verified, statusByStore))
+                .toList();
+        List<Store> candidates = pool.stream()
                 .filter(store -> matchesPurpose(store, request.purposes()))
-                .filter(store -> notImpossible(statusByStore.get(store.getStoreId())))
                 .toList();
         boolean relaxed = false;
 
-        if (candidates.size() < duration.maxStores()) {
-            // 2순위: 목적만 맞으면 된다 — 아직 리뷰가 없는 곳도 후보로 본다
-            List<Store> byPurpose = nearby.stream()
-                    .filter(store -> matchesPurpose(store, request.purposes()))
-                    .toList();
-            if (byPurpose.size() > candidates.size()) {
-                candidates = byPurpose;
-                relaxed = true;
-            }
-        }
-        if (candidates.size() < duration.maxStores()) {
-            // 3순위: 목적도 내려놓고 가까운 곳으로 채운다
-            if (nearby.size() > candidates.size()) {
-                candidates = nearby;
-                relaxed = true;
-            }
+        if (candidates.size() < duration.maxStores() && pool.size() > candidates.size()) {
+            // 목적에 맞는 곳이 모자라면 목적만 내려놓는다.
+            // 근거 조건(hasEvidence)은 어떤 경우에도 풀지 않는다 —
+            // 추천해도 되는 곳인지를 가르는 기준이라 자리를 채우려고 양보할 수 없다.
+            candidates = pool;
+            relaxed = true;
         }
 
         candidates = rankCandidates(candidates, demo);
@@ -120,8 +112,7 @@ public class CourseService {
                 walk.path(),
                 null,
                 relaxed,
-                toStoreResponses(route, statusByStore, loadTags(route), demo,
-                        verifiedAround(route, nearby)),
+                storeCandidates.toResponses(route, statusByStore, storeCandidates.tags(route), demo),
                 nearbyPlaceFinder.around(route));
     }
 
@@ -152,7 +143,7 @@ public class CourseService {
         List<Store> stores = course.getStores().stream()
                 .map(SavedCourseStore::getStore)
                 .toList();
-        Map<UUID, StoreSizeStatus> statusByStore = loadStatuses(stores, course.getDogSize());
+        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(stores, course.getDogSize());
 
         // 경로·거리·시간은 저장하지 않으므로 조회할 때마다 다시 얻는다.
         Walk walk = walk(stores);
@@ -169,8 +160,7 @@ public class CourseService {
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
-                toStoreResponses(stores, statusByStore, loadTags(stores), demo,
-                        verifiedAroundSaved(stores)),
+                storeCandidates.toResponses(stores, statusByStore, storeCandidates.tags(stores), demo),
                 nearbyPlaceFinder.around(stores));
     }
 
@@ -399,42 +389,6 @@ public class CourseService {
                 + storeCount * DWELL_MINUTES_PER_STORE;
     }
 
-    /**
-     * 코스 지점 중 공사 목록에 오른 곳.
-     *
-     * 코스 지점만 넣고 매칭하면 안 된다 — 매칭은 공사 지점 하나를 두고 주변 후보끼리 견줘
-     * 가장 그럴듯한 곳을 고르는 방식이라, 진짜 주인이 빠져 있으면 옆 가게가 대신 뽑힌다.
-     * 그렇다고 반경 후보를 통째로 넣으면 성동구 절반(7천 건)을 매칭하느라 1초를 넘긴다.
-     * 코스 지점 근처만 남겨 두 문제를 함께 피한다.
-     */
-    private Set<UUID> verifiedAround(List<Store> route, List<Store> pool) {
-        if (route.isEmpty()) {
-            return Set.of();
-        }
-        List<Store> neighbors = pool.stream()
-                .filter(candidate -> route.stream().anyMatch(store ->
-                        GeoDistance.between(store.getLat(), store.getLng(),
-                                candidate.getLat(), candidate.getLng())
-                                <= TourStoreMatcher.WIDE_RADIUS_METERS))
-                .toList();
-        return tourVerifier.verifiedAmong(neighbors);
-    }
-
-    /** 저장된 코스는 후보를 들고 있지 않아 이웃을 다시 읽는다. */
-    private Set<UUID> verifiedAroundSaved(List<Store> stores) {
-        if (stores.isEmpty()) {
-            return Set.of();
-        }
-        double lat = stores.stream().mapToDouble(Store::getLat).average().orElseThrow();
-        double lng = stores.stream().mapToDouble(Store::getLng).average().orElseThrow();
-        double span = stores.stream()
-                .mapToDouble(store -> GeoDistance.between(lat, lng, store.getLat(), store.getLng()))
-                .max().orElse(0);
-
-        int radius = (int) Math.ceil(span + TourStoreMatcher.WIDE_RADIUS_METERS);
-        return verifiedAround(stores, storeRepository.findWithinRadius(lat, lng, radius));
-    }
-
     private boolean matchesPurpose(Store store, List<CoursePurpose> purposes) {
         return purposes.stream().anyMatch(purpose -> purpose.matches(store.getType()));
     }
@@ -444,60 +398,4 @@ public class CourseService {
         return status == null || status.status() != AvailabilityStatus.IMPOSSIBLE;
     }
 
-    private Map<UUID, StoreSizeStatus> loadStatuses(List<Store> stores, DogSize dogSize) {
-        if (stores.isEmpty()) {
-            return Map.of();
-        }
-        return storeSizeStatusRepository.findByStore_StoreIdIn(storeIds(stores)).stream()
-                .filter(status -> status.getSize() == dogSize)
-                .collect(Collectors.toMap(
-                        status -> status.getStore().getStoreId(), status -> status));
-    }
-
-    private Map<UUID, List<String>> loadTags(List<Store> stores) {
-        if (stores.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, List<String>> tagsByStore = new LinkedHashMap<>();
-        storeTagCountRepository.findByStore_StoreIdIn(storeIds(stores)).stream()
-                // 한 번도 선택되지 않은 태그는 붙은 적 없는 것과 같다.
-                .filter(tagCount -> tagCount.getCount() > 0)
-                .sorted(Comparator.comparingInt(StoreTagCount::getCount).reversed())
-                .forEach(tagCount -> tagsByStore
-                        .computeIfAbsent(tagCount.getStore().getStoreId(), key -> new ArrayList<>())
-                        .add(tagCount.getTag().label()));
-
-        tagsByStore.replaceAll((storeId, tags) ->
-                tags.size() > TAG_LIMIT ? List.copyOf(tags.subList(0, TAG_LIMIT)) : List.copyOf(tags));
-        return tagsByStore;
-    }
-
-    private List<UUID> storeIds(List<Store> stores) {
-        return stores.stream().map(Store::getStoreId).toList();
-    }
-
-    private List<CourseStoreResponse> toStoreResponses(List<Store> route,
-                                                       Map<UUID, StoreSizeStatus> statusByStore,
-                                                       Map<UUID, List<String>> tagsByStore,
-                                                       boolean demo,
-                                                       Set<UUID> verified) {
-        List<CourseStoreResponse> responses = new ArrayList<>(route.size());
-        for (int i = 0; i < route.size(); i++) {
-            Store store = route.get(i);
-            StoreSizeStatus status = statusByStore.get(store.getStoreId());
-
-            responses.add(new CourseStoreResponse(
-                    store.getStoreId(),
-                    store.displayName(demo),
-                    store.getType(),
-                    store.getLat(),
-                    store.getLng(),
-                    i + 1,
-                    status == null ? AvailabilityStatus.UNKNOWN : status.status(),
-                    status == null ? 0 : status.getPossibleCount() + status.getImpossibleCount(),
-                    tagsByStore.getOrDefault(store.getStoreId(), List.of()),
-                    verified.contains(store.getStoreId())));
-        }
-        return responses;
-    }
 }

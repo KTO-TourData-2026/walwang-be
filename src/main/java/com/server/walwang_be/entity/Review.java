@@ -86,6 +86,18 @@ public class Review {
     @Column(name = "is_demo", nullable = false)
     private boolean demo;
 
+    /**
+     * 노출 상태. 신고가 들어와도 서버는 건드리지 않고 관리자가 DB에서 직접 바꾼다.
+     * 읽는 쪽은 이 값을 존중해야 한다 — 가려둔 리뷰가 집계에 남으면 가린 의미가 없다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blind_status", nullable = false, length = 20)
+    private BlindStatus blindStatus;
+
+    /** 가린 시각. 정상 상태면 비어 있다. 이의제기 기한을 세는 기준이 된다. */
+    @Column(name = "blinded_at")
+    private Instant blindedAt;
+
     @Builder
     private Review(User user, Store store, boolean dogAllowed, DogSize dogSize,
                    String photoUrl, String thumbnailUrl, String content,
@@ -102,5 +114,6 @@ public class Review {
                 : EnumSet.copyOf(tags);
         this.createdAt = Instant.now();
         this.demo = demo;
+        this.blindStatus = BlindStatus.NORMAL;
     }
 }

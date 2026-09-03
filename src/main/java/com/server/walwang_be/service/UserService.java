@@ -1,5 +1,6 @@
 package com.server.walwang_be.service;
 
+import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.dto.AgreementRequest;
 import com.server.walwang_be.dto.LoginRequest;
 import com.server.walwang_be.dto.SignUpRequest;
@@ -42,6 +43,7 @@ public class UserService {
     private final SavedStoreRepository savedStoreRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenBlacklistRepository tokenBlacklistRepository;
+    private final WithdrawnEmailService withdrawnEmailService;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
 
@@ -52,7 +54,7 @@ public class UserService {
                 .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
 
         return UserProfileResponse.of(user,
-                reviewRepository.countByUser_UserId(userId),
+                reviewRepository.countByUser_UserIdAndBlindStatus(userId, BlindStatus.NORMAL),
                 passportRepository.countByUser_UserId(userId),
                 savedStoreRepository.countByUser_UserId(userId));
     }
@@ -61,7 +63,8 @@ public class UserService {
     @Transactional(readOnly = true)
     public List<MyReviewResponse> findMyReviews(UUID userId, int page, int size) {
         return reviewRepository
-                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+                .findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
+                        userId, BlindStatus.NORMAL, PageRequest.of(page, size))
                 .map(MyReviewResponse::from)
                 .getContent();
     }
@@ -70,6 +73,10 @@ public class UserService {
     public void signUp(SignUpRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalStateException("이미 가입된 이메일입니다.");
+        }
+        // 해지 이력이 있는 주소(약관 4조 4항). 탈퇴 사실이 드러나지 않게 사유는 말하지 않는다.
+        if (withdrawnEmailService.blocked(request.email())) {
+            throw new IllegalStateException("현재 가입할 수 없는 이메일입니다.");
         }
         if (userRepository.existsByNickname(request.nickname())) {
             throw new IllegalStateException("이미 사용 중인 닉네임입니다.");
@@ -168,8 +175,14 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * 이 주소로 가입할 수 있는지.
+     *
+     * 이미 쓰는 주소와 차단된 주소를 구분하지 않고 한 값으로 답한다 —
+     * 나눠서 알려주면 아무나 남의 주소를 넣어보고 상태를 알아낼 수 있다.
+     */
     public boolean isEmailTaken(String email) {
-        return userRepository.existsByEmail(email);
+        return userRepository.existsByEmail(email) || withdrawnEmailService.blocked(email);
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,7 @@
 package com.server.walwang_be.controller;
 
+import com.server.walwang_be.service.AlternativeStoreService;
+import com.server.walwang_be.dto.CourseStoreResponse;
 import com.server.walwang_be.dto.ReviewResponse;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.StoreDetailResponse;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class StoreController {
 
     private final StoreService storeService;
+    private final AlternativeStoreService alternativeStoreService;
     private final MapStoreService mapStoreService;
 
     /**
@@ -90,5 +93,18 @@ public class StoreController {
                                             @PathVariable UUID storeId) {
         storeService.unsaveStore(userId, storeId);
         return ResponseEntity.ok().build();
+    }
+    /**
+     * 거절당했을 때의 대안. 기준 가게 반경 500m 안, 같은 업종, 가까운 순 최대 3곳.
+     *
+     * 코스 추천과 같은 근거 기준을 쓴다 — 공사 확인이나 리뷰 확인 중 하나는 있어야 하고,
+     * 해당 크기로 동반 불가인 곳은 뺀다. 조건에 맞는 곳이 없으면 빈 배열이다.
+     */
+    @GetMapping("/{storeId}/alternatives")
+    public ResponseEntity<List<CourseStoreResponse>> findAlternatives(
+            @PathVariable UUID storeId,
+            @RequestParam DogSize size,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(alternativeStoreService.findAlternatives(storeId, size, demo));
     }
 }

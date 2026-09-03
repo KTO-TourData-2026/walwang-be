@@ -3,8 +3,11 @@ package com.server.walwang_be.service;
 import com.server.walwang_be.client.SupabaseStorageClient;
 import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.Store;
+import com.server.walwang_be.entity.User;
+import com.server.walwang_be.entity.WithdrawalReason;
 import com.server.walwang_be.repo.PassportRepository;
 import com.server.walwang_be.repo.RefreshTokenRepository;
+import com.server.walwang_be.repo.ReviewReportRepository;
 import com.server.walwang_be.repo.ReviewRepository;
 import com.server.walwang_be.repo.SavedCourseRepository;
 import com.server.walwang_be.repo.SavedStoreRepository;
@@ -39,8 +42,10 @@ import java.util.UUID;
 public class UserWithdrawalService {
 
     private final UserRepository userRepository;
+    private final WithdrawnEmailService withdrawnEmailService;
     private final UserAgreementRepository userAgreementRepository;
     private final ReviewRepository reviewRepository;
+    private final ReviewReportRepository reviewReportRepository;
     private final PassportRepository passportRepository;
     private final SavedStoreRepository savedStoreRepository;
     private final SavedCourseRepository savedCourseRepository;
@@ -52,9 +57,10 @@ public class UserWithdrawalService {
 
     @Transactional
     public void withdraw(UUID userId, String accessToken) {
-        if (!userRepository.existsById(userId)) {
-            throw new BadCredentialsException("존재하지 않는 사용자입니다.");
-        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
+        // 유저를 지우기 전에 주소를 챙긴다. 지운 뒤에는 읽을 수 없다.
+        String email = user.getEmail();
 
         List<Review> reviews = reviewRepository.findByUser_UserId(userId);
 
@@ -69,6 +75,13 @@ public class UserWithdrawalService {
 
         // 여권이 리뷰를 참조하므로 리뷰보다 먼저 지운다.
         passportRepository.deleteByUser_UserId(userId);
+        // 이 사람이 낸 신고와, 이 사람의 리뷰를 향해 남이 낸 신고를 모두 걷어낸다 —
+        // 둘 중 하나라도 남으면 FK에 걸려 탈퇴 자체가 실패한다.
+        reviewReportRepository.deleteByReporter_UserId(userId);
+        if (!reviews.isEmpty()) {
+            reviewReportRepository.deleteByReview_ReviewIdIn(
+                    reviews.stream().map(Review::getReviewId).toList());
+        }
         reviewRepository.deleteAll(reviews);
         savedStoreRepository.deleteByUser_UserId(userId);
         savedCourseRepository.deleteByUser_UserId(userId);
@@ -78,6 +91,9 @@ public class UserWithdrawalService {
 
         affectedStores.forEach(reviewService::recompute);
         userRepository.deleteById(userId);
+
+        // 자진 탈퇴는 기록만 남고 재가입을 막지 않는다(WithdrawalReason 참고).
+        withdrawnEmailService.record(email, WithdrawalReason.SELF);
 
         // 토큰은 롤백되지 않으므로 커밋이 확정된 뒤에 정리한다.
         afterCommit(() -> {

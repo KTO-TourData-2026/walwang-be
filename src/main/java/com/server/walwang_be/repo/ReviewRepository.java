@@ -1,5 +1,6 @@
 package com.server.walwang_be.repo;
 
+import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.entity.Review;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,8 +20,8 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * 페이징이 DB가 아닌 메모리에서 일어나 버린다.
      */
     @EntityGraph(attributePaths = "user")
-    Page<Review> findByStore_StoreIdAndDemoOrderByCreatedAtDesc(
-            UUID storeId, boolean demo, Pageable pageable);
+    Page<Review> findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
+            UUID storeId, boolean demo, BlindStatus blindStatus, Pageable pageable);
 
     /**
      * 점수·태그 재집계용. 페이징이 없으니 태그까지 한 번에 끌어와도 안전하다.
@@ -28,9 +29,14 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * 집계 쿼리로 바꿔야 한다.
      */
     @EntityGraph(attributePaths = "tags")
-    List<Review> findByStore_StoreIdAndDemo(UUID storeId, boolean demo);
+    List<Review> findByStore_StoreIdAndDemoAndBlindStatus(
+            UUID storeId, boolean demo, BlindStatus blindStatus);
 
-    /** 회원 탈퇴 시 사진까지 지우려면 URL이 필요해 엔티티로 받는다. */
+    /**
+     * 회원 탈퇴 시 사진까지 지우려면 URL이 필요해 엔티티로 받는다.
+     *
+     * 여기만 blindStatus로 거르지 않는다 — 지우는 자리라 가려진 것도 함께 데려가야 한다.
+     */
     List<Review> findByUser_UserId(UUID userId);
 
     /**
@@ -38,7 +44,8 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * tags는 컬렉션이라 넣지 않는다 — 페이징이 메모리에서 일어나 버린다.
      */
     @EntityGraph(attributePaths = "store")
-    Page<Review> findByUser_UserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
+    Page<Review> findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
+            UUID userId, BlindStatus blindStatus, Pageable pageable);
 
-    long countByUser_UserId(UUID userId);
+    long countByUser_UserIdAndBlindStatus(UUID userId, BlindStatus blindStatus);
 }

@@ -3,9 +3,12 @@ package com.server.walwang_be.controller;
 import com.server.walwang_be.dto.ReceiptVerifyResponse;
 import com.server.walwang_be.dto.ReviewCreateRequest;
 import com.server.walwang_be.dto.ReviewCreateResponse;
+import com.server.walwang_be.dto.ReviewReportRequest;
+import com.server.walwang_be.service.ReviewReportService;
 import com.server.walwang_be.service.ReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,7 +18,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +33,7 @@ import java.util.UUID;
 public class ReviewController {
 
     private final ReviewService reviewService;
+    private final ReviewReportService reviewReportService;
 
     /**
      * 리뷰 등록.
@@ -56,6 +62,20 @@ public class ReviewController {
             @RequestPart("receipt") MultipartFile receipt,
             @RequestParam("store_id") UUID storeId) {
         return ResponseEntity.ok(reviewService.verifyReceipt(userId, storeId, receipt));
+    }
+
+    /**
+     * 리뷰 신고. 약관 11조(정보통신망법 44조의2)가 정한 접수 창구다.
+     *
+     * 접수만 하고 노출은 그대로 둔다 — 가릴지는 관리자가 내용을 보고 정한다.
+     * 없는 리뷰 404, 본인 리뷰 400, 이미 신고한 리뷰 409.
+     */
+    @PostMapping("/{reviewId}/reports")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void report(@AuthenticationPrincipal UUID userId,
+                       @PathVariable UUID reviewId,
+                       @Valid @RequestBody ReviewReportRequest request) {
+        reviewReportService.report(userId, reviewId, request);
     }
 
     /** 내 리뷰 삭제. 남의 리뷰면 403. */

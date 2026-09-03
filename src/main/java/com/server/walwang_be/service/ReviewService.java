@@ -3,11 +3,13 @@ package com.server.walwang_be.service;
 import com.server.walwang_be.client.PawStampClient;
 import com.server.walwang_be.client.ReceiptOcrClient;
 import com.server.walwang_be.client.SupabaseStorageClient;
+import com.server.walwang_be.dto.RecomputeResultResponse;
 import com.server.walwang_be.dto.ReceiptVerifyResponse;
 import com.server.walwang_be.dto.ReviewCreateRequest;
 import com.server.walwang_be.dto.ReviewCreateResponse;
 import com.server.walwang_be.dto.SizeStatusResponse;
 import com.server.walwang_be.dto.StoreStatusSummary;
+import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.StoreSizeStatus;
@@ -16,6 +18,7 @@ import com.server.walwang_be.entity.StoreTagCount;
 import com.server.walwang_be.entity.User;
 import com.server.walwang_be.repo.PassportRepository;
 import com.server.walwang_be.repo.ReceiptTokenRepository;
+import com.server.walwang_be.repo.ReviewReportRepository;
 import com.server.walwang_be.repo.ReviewRepository;
 import com.server.walwang_be.repo.StoreRepository;
 import com.server.walwang_be.repo.StoreSizeStatusRepository;
@@ -56,6 +59,7 @@ public class ReviewService {
             Set.of(MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE);
 
     private final ReviewRepository reviewRepository;
+    private final ReviewReportRepository reviewReportRepository;
     private final StoreRepository storeRepository;
     private final StoreSizeStatusRepository storeSizeStatusRepository;
     private final StoreTagCountRepository storeTagCountRepository;
@@ -162,8 +166,10 @@ public class ReviewService {
         String photoUrl = review.getPhotoUrl();
         String thumbnailUrl = review.getThumbnailUrl();
 
-        // 여권이 리뷰를 참조하므로 먼저 지운다. 다녀온 증거가 사라지면 도장도 남지 않는다.
+        // 여권과 신고가 리뷰를 참조하므로 먼저 지운다.
+        // 다녀온 증거가 사라지면 도장도 남지 않고, 사라진 리뷰를 향한 신고도 의미가 없다.
         passportRepository.deleteByReview_ReviewId(reviewId);
+        reviewReportRepository.deleteByReview_ReviewId(reviewId);
         reviewRepository.delete(review);
         // 재집계가 삭제된 리뷰를 다시 세지 않도록 먼저 DB에 반영한다.
         reviewRepository.flush();
@@ -226,6 +232,35 @@ public class ReviewService {
     }
 
     /**
+     * 가게 하나를 다시 집계하고 결과를 돌려준다.
+     *
+     * 관리자가 리뷰를 가린 뒤 부르는 자리다. blind_status를 DB에서 직접 바꾸면
+     * 등록·삭제 어느 쪽도 아니라 recompute가 저절로 돌지 않는다 —
+     * 그대로 두면 목록에서는 사라진 리뷰가 점수에는 남는다.
+     */
+    @Transactional
+    public RecomputeResultResponse recomputeStore(UUID storeId) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
+
+        recompute(store);
+        // 갱신된 값을 그대로 읽어 보여주려면 먼저 반영돼야 한다.
+        storeSizeStatusRepository.flush();
+
+        int counted = reviewRepository
+                .findByStore_StoreIdAndDemoAndBlindStatus(storeId, false, BlindStatus.NORMAL)
+                .size();
+
+        List<RecomputeResultResponse.SizeResult> sizes =
+                storeSizeStatusRepository.findByStore_StoreId(storeId).stream()
+                        .sorted(Comparator.comparing(StoreSizeStatus::getSize))
+                        .map(RecomputeResultResponse.SizeResult::from)
+                        .toList();
+
+        return new RecomputeResultResponse(storeId, store.getName(), counted, sizes);
+    }
+
+    /**
      * 가게의 리뷰를 전부 다시 세어 점수·건수·태그를 갈아끼운다.
      *
      * 등록·삭제 양쪽에서 같은 함수를 부르는 게 핵심이다.
@@ -233,7 +268,9 @@ public class ReviewService {
      */
     public void recompute(Store store) {
         // 실제 리뷰만 센다. 목 리뷰가 실제 동반 가능 점수를 흔들면 안 된다.
-        List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemo(store.getStoreId(), false);
+        // 가려진 리뷰도 뺀다 — 화면에서 감췄는데 점수에 남아 있으면 가린 의미가 없다.
+        List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemoAndBlindStatus(
+                store.getStoreId(), false, BlindStatus.NORMAL);
         Instant now = Instant.now();
 
         int totalPossible = 0;

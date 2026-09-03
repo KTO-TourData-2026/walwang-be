@@ -8,8 +8,8 @@ import java.util.UUID;
 /**
  * 코스에 담긴 가게 한 곳.
  *
- * 지도(GET /stores)와 달리 코스는 공사 매칭 여부로 거르지 않는다 —
- * 매칭이 37곳뿐이라 걸러내면 코스가 안 나온다. 대신 petVerified로 표시만 한다.
+ * 코스 후보는 공사 매칭된 곳으로만 좁히므로 여기 담긴 가게는 전부 확인된 곳이다 —
+ * 따로 표시할 필요가 없어 배지 필드를 두지 않는다.
  */
 public record CourseStoreResponse(
         UUID storeId,
@@ -21,13 +21,6 @@ public record CourseStoreResponse(
         /** 요청한 반려견 크기 기준의 동반 가능 등급. */
         AvailabilityStatus status,
         int reviewCount,
-        List<String> tags,
-        /**
-         * 한국관광공사 반려동물 동반 목록에 이름이 오른 곳인지. 카드에 배지로 쓴다.
-         *
-         * false는 "동반 불가"가 아니라 "공사 목록에서 확인되지 않음"이다.
-         * 동반 가능 여부 자체는 status가 따로 말한다.
-         */
-        boolean petVerified
+        List<String> tags
 ) {
 }

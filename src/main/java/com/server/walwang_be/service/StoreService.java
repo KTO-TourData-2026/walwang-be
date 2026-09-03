@@ -5,6 +5,7 @@ import com.server.walwang_be.dto.SizeStatusResponse;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.StoreDetailResponse;
 import com.server.walwang_be.entity.DogSize;
+import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.SavedStore;
 import com.server.walwang_be.entity.Store;
@@ -71,7 +72,8 @@ public class StoreService {
                 toSizeStatus(storeSizeStatusRepository.findByStore_StoreId(storeId), null);
 
         List<String> thumbnailUrls = reviewRepository
-                .findByStore_StoreIdAndDemoOrderByCreatedAtDesc(storeId, demo, PageRequest.of(0, THUMBNAIL_LIMIT))
+                .findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
+                        storeId, demo, BlindStatus.NORMAL, PageRequest.of(0, THUMBNAIL_LIMIT))
                 .map(Review::getThumbnailUrl)
                 .getContent();
 
@@ -80,7 +82,8 @@ public class StoreService {
 
     public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo) {
         return reviewRepository
-                .findByStore_StoreIdAndDemoOrderByCreatedAtDesc(storeId, demo, PageRequest.of(page, size))
+                .findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
+                        storeId, demo, BlindStatus.NORMAL, PageRequest.of(page, size))
                 .map(ReviewResponse::from)
                 .getContent();
     }
