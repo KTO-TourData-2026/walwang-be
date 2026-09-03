@@ -18,9 +18,19 @@ public record ReviewResponse(
         String thumbnailUrl,
         List<String> tags,
         String content,
-        Instant createdAt
+        Instant createdAt,
+        /**
+         * 지금 보고 있는 사람이 쓴 리뷰인지. 화면에서 신고 버튼을 감추는 데 쓴다.
+         *
+         * 서버도 본인 리뷰 신고를 400으로 막지만, 누를 수 있는 버튼을 보여주고
+         * 누르면 거절하는 것보다 애초에 안 보여주는 편이 낫다.
+         */
+        boolean mine
 ) {
-    public static ReviewResponse from(Review review) {
+    /**
+     * @param viewerId 조회한 사람. 비로그인이면 null이고 mine은 전부 false가 된다
+     */
+    public static ReviewResponse from(Review review, UUID viewerId) {
         return new ReviewResponse(
                 review.getReviewId(),
                 review.getUser().getNickname(),
@@ -30,6 +40,7 @@ public record ReviewResponse(
                 review.getThumbnailUrl(),
                 review.getTags().stream().map(StoreTag::label).toList(),
                 review.getContent(),
-                review.getCreatedAt());
+                review.getCreatedAt(),
+                viewerId != null && review.getUser().getUserId().equals(viewerId));
     }
 }

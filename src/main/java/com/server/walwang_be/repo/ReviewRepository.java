@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.UUID;
@@ -48,4 +50,13 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             UUID userId, BlindStatus blindStatus, Pageable pageable);
 
     long countByUser_UserIdAndBlindStatus(UUID userId, BlindStatus blindStatus);
+
+    /**
+     * 리뷰가 하나라도 달린 가게의 id.
+     *
+     * 일괄 재집계 대상을 고르는 데 쓴다. 가게 7천 건을 전부 도는 대신
+     * 리뷰가 있는 곳만 추린다 — 리뷰가 없으면 다시 세도 결과가 같다.
+     */
+    @Query("select distinct r.store.storeId from Review r where r.blindStatus = :blindStatus")
+    List<UUID> findStoreIdsWithReviews(@Param("blindStatus") BlindStatus blindStatus);
 }

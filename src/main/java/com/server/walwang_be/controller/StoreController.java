@@ -72,11 +72,12 @@ public class StoreController {
     /** 가게의 리뷰 목록. 최신순. */
     @GetMapping("/{storeId}/reviews")
     public ResponseEntity<List<ReviewResponse>> findReviews(
+            @AuthenticationPrincipal UUID userId,
             @PathVariable UUID storeId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(defaultValue = "false") boolean demo) {
-        return ResponseEntity.ok(storeService.findReviews(storeId, page, size, demo));
+        return ResponseEntity.ok(storeService.findReviews(storeId, page, size, demo, userId));
     }
 
     /** 가게 저장. 이미 저장돼 있어도 200. */

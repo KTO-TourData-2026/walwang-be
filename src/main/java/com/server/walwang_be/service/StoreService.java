@@ -37,8 +37,12 @@ public class StoreService {
 
     /** 상세 화면에 띄울 리뷰 사진 개수. */
     private static final int THUMBNAIL_LIMIT = 5;
+    /** 매칭 판정에 쓸 후보 반경. 공사 지점 반경(300m)의 두 배다. */
+    private static final int MATCH_POOL_RADIUS_METERS =
+            (int) (TourStoreMatcher.WIDE_RADIUS_METERS * 2);
 
     private final StoreRepository storeRepository;
+    private final TourVerifier tourVerifier;
     private final StoreSizeStatusRepository storeSizeStatusRepository;
     private final StoreTagCountRepository storeTagCountRepository;
     private final ReviewRepository reviewRepository;
@@ -77,14 +81,40 @@ public class StoreService {
                 .map(Review::getThumbnailUrl)
                 .getContent();
 
-        return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls, demo);
+        return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls, demo,
+                petVerified(store));
     }
 
-    public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo) {
+    /**
+     * 가게의 리뷰 목록.
+     *
+     * viewerId는 mine을 채우는 데만 쓴다. 비로그인이면 null이 들어와 전부 false가 된다.
+     */
+    /**
+     * 이 가게가 공사 반려동물 동반 목록에 있는지. 요청 때마다 공사 API로 확인한다.
+     *
+     * 조회한 공사 응답은 저장하지 않는다 — TourDataProvider가 @RequestScope라
+     * 이 요청이 끝나면 함께 사라진다.
+     *
+     * 실패하면 false다. 상세 조회 자체를 실패로 만들지는 않는다 —
+     * 참고 배지 하나 때문에 가게 정보를 못 보게 되는 쪽이 더 나쁘다.
+     */
+    private boolean petVerified(Store store) {
+        // 판정에 영향을 주는 이웃까지 담는다. 근처 공사 지점(300m)의 진짜 주인이
+        // 그 지점에서 다시 300m 떨어져 있을 수 있어 두 배로 잡는다.
+        List<Store> pool = storeRepository.findWithinRadius(
+                store.getLat(), store.getLng(), MATCH_POOL_RADIUS_METERS);
+
+        return tourVerifier.verifiedNear(pool, store.getLat(), store.getLng(),
+                TourStoreMatcher.WIDE_RADIUS_METERS).contains(store.getStoreId());
+    }
+
+    public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo,
+                                            UUID viewerId) {
         return reviewRepository
                 .findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
                         storeId, demo, BlindStatus.NORMAL, PageRequest.of(page, size))
-                .map(ReviewResponse::from)
+                .map(review -> ReviewResponse.from(review, viewerId))
                 .getContent();
     }
 

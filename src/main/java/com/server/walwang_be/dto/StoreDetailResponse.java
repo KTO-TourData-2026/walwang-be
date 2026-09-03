@@ -24,13 +24,21 @@ public record StoreDetailResponse(
         int impossibleCount,
         Instant lastVerifiedAt,
         List<SizeStatusResponse> sizeStatus,
-        List<String> thumbnailUrls
+        List<String> thumbnailUrls,
+        /**
+         * 한국관광공사 반려동물 동반 목록에 이름이 오른 곳인지. 상세 화면 배지에 쓴다.
+         *
+         * false는 두 가지를 함께 담는다 — 목록에 없거나, 공사 API 조회에 실패해
+         * 확인하지 못한 경우다. 둘을 구분해야 하면 별도 필드가 필요하다.
+         */
+        boolean petVerified
 ) {
     public static StoreDetailResponse of(Store store,
                                          List<String> tags,
                                          List<SizeStatusResponse> sizeStatus,
                                          List<String> thumbnailUrls,
-                                         boolean demo) {
+                                         boolean demo,
+                                         boolean petVerified) {
         return new StoreDetailResponse(
                 store.getStoreId(),
                 store.displayName(demo),
@@ -44,6 +52,7 @@ public record StoreDetailResponse(
                 store.getImpossibleCount(),
                 store.getLastVerifiedAt(),
                 sizeStatus,
-                thumbnailUrls);
+                thumbnailUrls,
+                petVerified);
     }
 }

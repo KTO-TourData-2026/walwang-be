@@ -239,16 +239,16 @@ public class ReviewService {
      * 그대로 두면 목록에서는 사라진 리뷰가 점수에는 남는다.
      */
     @Transactional
-    public RecomputeResultResponse recomputeStore(UUID storeId) {
+    public RecomputeResultResponse recomputeStore(UUID storeId, boolean demo) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
-        recompute(store);
+        recompute(store, demo);
         // 갱신된 값을 그대로 읽어 보여주려면 먼저 반영돼야 한다.
         storeSizeStatusRepository.flush();
 
         int counted = reviewRepository
-                .findByStore_StoreIdAndDemoAndBlindStatus(storeId, false, BlindStatus.NORMAL)
+                .findByStore_StoreIdAndDemoAndBlindStatus(storeId, demo, BlindStatus.NORMAL)
                 .size();
 
         List<RecomputeResultResponse.SizeResult> sizes =
@@ -263,14 +263,27 @@ public class ReviewService {
     /**
      * 가게의 리뷰를 전부 다시 세어 점수·건수·태그를 갈아끼운다.
      *
+     * ⚠ store_size_status는 (가게, 크기)당 한 행뿐이라 시연용과 실제용을 함께 담지 못한다.
+     * demo=true로 부르면 목 리뷰로 계산한 값이 실제 리뷰로 계산한 값을 덮어쓴다.
+     * 지금은 실제 리뷰가 없어 문제가 없지만, 실제 리뷰가 쌓이기 시작하면
+     * store_size_status에 is_demo를 두고 행을 나눠야 한다.
+     *
      * 등록·삭제 양쪽에서 같은 함수를 부르는 게 핵심이다.
      * 더하고 빼는 방식이면 시간가중 점수가 원래대로 돌아오지 않아 오차가 쌓인다.
      */
     public void recompute(Store store) {
-        // 실제 리뷰만 센다. 목 리뷰가 실제 동반 가능 점수를 흔들면 안 된다.
-        // 가려진 리뷰도 뺀다 — 화면에서 감췄는데 점수에 남아 있으면 가린 의미가 없다.
+        // 리뷰 등록·삭제에서 부르는 길. 실제 리뷰만 센다.
+        recompute(store, false);
+    }
+
+    /**
+     * @param demo true면 시연용 목 리뷰(is_demo=true)로 집계한다
+     */
+    public void recompute(Store store, boolean demo) {
+        // demo가 정한 쪽 리뷰만 센다. 가려진 리뷰는 어느 쪽이든 뺀다 —
+        // 화면에서 감췄는데 점수에 남아 있으면 가린 의미가 없다.
         List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemoAndBlindStatus(
-                store.getStoreId(), false, BlindStatus.NORMAL);
+                store.getStoreId(), demo, BlindStatus.NORMAL);
         Instant now = Instant.now();
 
         int totalPossible = 0;

@@ -56,4 +56,39 @@ public class TourVerifier {
 
         return verified;
     }
+
+    /**
+     * 한 지점 주변만 좁혀 판정한다.
+     *
+     * 가게 한 곳의 매칭 여부만 알면 되는 자리에서 쓴다. 공사 항목 102건 전체를
+     * 반경 후보 수천 건과 견주면 1초가 걸리는데, 그 대부분은 우리 가게와 무관한 조합이다.
+     * 판정에 영향을 주는 것은 가게 근처의 공사 지점뿐이라 그것만 남긴다.
+     *
+     * pool은 호출한 쪽이 넉넉히 넘겨야 한다 — 근처 공사 지점의 진짜 주인이 빠지면
+     * 우리 가게가 대신 뽑혀 매칭됐다고 잘못 답한다.
+     */
+    public Set<UUID> verifiedNear(List<Store> pool, double lat, double lng, double radiusMeters) {
+        if (pool.isEmpty()) {
+            return Set.of();
+        }
+        long startedAt = System.currentTimeMillis();
+        List<TourStoreMatcher.TourPoint> points = tourDataProvider.seongdongPoints().stream()
+                .filter(point -> GeoDistance.between(lat, lng, point.lat(), point.lng())
+                        <= radiusMeters)
+                .toList();
+
+        if (points.isEmpty()) {
+            log.info("공사 매칭(근처): 반경 {}m 안 공사 지점이 없어 미매칭으로 봅니다.", (int) radiusMeters);
+            return Set.of();
+        }
+        Set<UUID> verified = new LinkedHashSet<>(
+                matcher.matchAll(points, pool).matched().values().stream()
+                        .map(TourStoreMatcher.Match::storeId)
+                        .toList());
+        log.info("공사 매칭(근처): 공사 {}건 x 후보 {}건 -> {}건 ({}ms)",
+                points.size(), pool.size(), verified.size(),
+                System.currentTimeMillis() - startedAt);
+
+        return verified;
+    }
 }

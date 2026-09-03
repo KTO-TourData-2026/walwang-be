@@ -89,6 +89,30 @@ Authorization: Bearer <accessToken>
 
 해제(NORMAL 복귀)할 때도 똑같이 불러야 점수가 돌아온다.
 
+## 목 리뷰를 DB에 직접 넣었을 때
+
+리뷰를 SQL로 넣으면 등록 경로를 타지 않아 재집계가 돌지 않는다.
+가게마다 부르지 말고 한 번에 끝낸다.
+
+```
+POST /internal/stores/recompute-all?demo=true
+Authorization: Bearer <accessToken>
+```
+
+`demo`는 어느 쪽 리뷰로 집계할지 정한다. 생략하면 `false`(실제 리뷰)다.
+목 리뷰는 `is_demo = true`로 들어가므로 **`demo=true`를 빼먹으면 점수가 0으로 덮인다.**
+
+응답에 `total` / `succeeded` / `failed` / `elapsedMs` / `failures[]`가 담긴다.
+한 가게가 실패해도 나머지는 끝까지 돌고, 실패한 가게 id가 `failures`에 남는다.
+
+### ⚠️ 시연용과 실제용은 같은 자리를 쓴다
+
+`store_size_status`는 (가게, 크기)당 한 행뿐이라 두 벌을 담지 못한다.
+`demo=true`로 돌리면 목 리뷰로 계산한 값이 실제 리뷰 기준 점수를 **덮어쓴다.**
+
+실제 리뷰가 0건인 동안은 문제가 없다. 실제 리뷰가 쌓이기 시작하면
+`store_size_status`에 `is_demo`를 두고 행을 나눠야 한다.
+
 ## 알아둘 것
 
 - **`sizes`가 빈 배열이면** 그 가게에 `store_size_status` 행이 없다는 뜻이다.
