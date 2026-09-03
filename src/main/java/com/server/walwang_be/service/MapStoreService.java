@@ -1,6 +1,5 @@
 package com.server.walwang_be.service;
 
-import com.server.walwang_be.client.TourApiClient;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.entity.AvailabilityStatus;
 import com.server.walwang_be.entity.DogSize;
@@ -13,8 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,14 +33,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class MapStoreService {
 
-    /** 성동구. 지금은 이 지역만 서비스한다. */
-    private static final String SEOUL = "11";
-    private static final String SEONGDONG = "200";
-    /** 성동구 전체가 102건이라 한 번에 받는다. */
-    private static final int PAGE_SIZE = 500;
-
-    private final TourApiClient tourApiClient;
-    private final TourStoreMatcher matcher;
+    private final TourVerifier tourVerifier;
     private final StoreRepository storeRepository;
     private final StoreService storeService;
     private final StoreSizeStatusRepository storeSizeStatusRepository;
@@ -56,25 +46,13 @@ public class MapStoreService {
      */
     public List<StoreCardResponse> findVerifiedNearby(double lat, double lng, int radius,
                                                      DogSize size, boolean demo) {
-        List<TourStoreMatcher.TourPoint> points = fetchTourPoints();
-        if (points.isEmpty()) {
-            return List.of();
-        }
-
         // 후보를 한 번만 읽어 매칭에 재사용한다. 지점마다 반경 쿼리를 던지면
         // 항목 수 × 단계 수만큼 왕복이 생겨 원격 DB에서는 그것만으로 몇 초가 걸린다.
         long startedAt = System.currentTimeMillis();
         List<Store> pool = storeRepository.findWithinRadius(lat, lng, poolRadius(radius));
-        long loadedAt = System.currentTimeMillis();
+        log.info("지도 후보 조회: {}건 ({}ms)", pool.size(), System.currentTimeMillis() - startedAt);
 
-        Set<UUID> verified = new LinkedHashSet<>(
-                matcher.matchAll(points, pool).matched().values().stream()
-                        .map(TourStoreMatcher.Match::storeId)
-                        .toList());
-        log.info("지도 매칭: 공사 {}건 x 후보 {}건 -> {}건 (조회 {}ms, 매칭 {}ms)",
-                points.size(), pool.size(), verified.size(),
-                loadedAt - startedAt, System.currentTimeMillis() - loadedAt);
-
+        Set<UUID> verified = tourVerifier.verifiedAmong(pool);
         if (verified.isEmpty()) {
             return List.of();
         }
@@ -126,37 +104,5 @@ public class MapStoreService {
      * 공사 데이터를 좌표 목록으로 바꾼다.
      * 실패는 삼키고 빈 목록으로 돌린다 — 지도는 떠야 한다.
      */
-    private List<TourStoreMatcher.TourPoint> fetchTourPoints() {
-        TourApiClient.TourResponse response;
-        try {
-            response = tourApiClient.areaBasedList(SEOUL, SEONGDONG, null, PAGE_SIZE, 1, true);
-        } catch (RuntimeException e) {
-            log.warn("공사 API 조회 실패, 지도를 빈 목록으로 응답합니다: {}", e.getMessage());
-            return List.of();
-        }
 
-        List<TourStoreMatcher.TourPoint> points = new ArrayList<>(response.items().size());
-        for (Map<String, Object> item : response.items()) {
-            Double itemLat = toDouble(item.get("mapy"));
-            Double itemLng = toDouble(item.get("mapx"));
-            if (itemLat != null && itemLng != null) {
-                points.add(new TourStoreMatcher.TourPoint(
-                        String.valueOf(item.get("title")), itemLat, itemLng));
-            }
-        }
-        return points;
-    }
-
-    /** mapx/mapy는 JSON에서 문자열로 온다. */
-    private Double toDouble(Object value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            String text = String.valueOf(value).trim();
-            return text.isEmpty() ? null : Double.valueOf(text);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
 }

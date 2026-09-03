@@ -4,6 +4,7 @@ import com.server.walwang_be.dto.CourseRecommendRequest;
 import com.server.walwang_be.dto.CourseResponse;
 import com.server.walwang_be.dto.CourseSaveRequest;
 import com.server.walwang_be.dto.CourseStoreResponse;
+import com.server.walwang_be.dto.NearbyPlaceResponse;
 import com.server.walwang_be.dto.SavedCourseSummaryResponse;
 import com.server.walwang_be.entity.AvailabilityStatus;
 import com.server.walwang_be.entity.CourseDuration;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -62,6 +64,8 @@ public class CourseService {
     private final UserRepository userRepository;
     private final PlaceEmbeddingRepository placeEmbeddingRepository;
     private final TmapClient tmapClient;
+    private final NearbyPlaceFinder nearbyPlaceFinder;
+    private final TourVerifier tourVerifier;
 
     /**
      * 코스 추천.
@@ -116,7 +120,9 @@ public class CourseService {
                 walk.path(),
                 null,
                 relaxed,
-                toStoreResponses(route, statusByStore, loadTags(route), demo));
+                toStoreResponses(route, statusByStore, loadTags(route), demo,
+                        verifiedAround(route, nearby)),
+                nearbyPlaceFinder.around(route));
     }
 
     @Transactional
@@ -130,9 +136,6 @@ public class CourseService {
                 .dogSize(request.dogSize())
                 .purposes(request.purposes())
                 .duration(request.duration())
-                .totalDistance(request.totalDistance())
-                .totalDuration(request.totalDuration())
-                .walkPath(request.walkPath())
                 .description(request.description())
                 .build();
 
@@ -151,25 +154,40 @@ public class CourseService {
                 .toList();
         Map<UUID, StoreSizeStatus> statusByStore = loadStatuses(stores, course.getDogSize());
 
+        // 경로·거리·시간은 저장하지 않으므로 조회할 때마다 다시 얻는다.
+        Walk walk = walk(stores);
+
         return new CourseResponse(
                 course.getCourseId(),
                 course.getTitle(),
                 course.getDogSize(),
                 List.copyOf(course.getPurposes()),
                 course.getDuration(),
-                course.getTotalDistance(),
-                course.getTotalDuration(),
-                course.getWalkPath(),
+                walk.distanceMeters(),
+                walk.durationMinutes(),
+                walk.path(),
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
-                toStoreResponses(stores, statusByStore, loadTags(stores), demo));
+                toStoreResponses(stores, statusByStore, loadTags(stores), demo,
+                        verifiedAroundSaved(stores)),
+                nearbyPlaceFinder.around(stores));
     }
 
     /** 저장한 코스 목록. 최근에 저장한 것부터. */
     public List<SavedCourseSummaryResponse> findMyCourses(UUID userId, boolean demo) {
         return savedCourseRepository.findByUser_UserIdOrderByCreatedAtDesc(userId).stream()
-                .map(course -> SavedCourseSummaryResponse.of(course, demo))
+                .map(course -> {
+                    List<Store> stores = course.getStores().stream()
+                            .map(SavedCourseStore::getStore)
+                            .toList();
+                    // 목록은 직선 추정치로 채운다. 코스마다 티맵을 부르면
+                    // 호출이 코스 수만큼 늘어나고, 미리보기에는 이 정도면 충분하다.
+                    double distance = straightDistance(stores);
+                    return SavedCourseSummaryResponse.of(course, demo,
+                            (int) Math.round(distance),
+                            totalDuration(distance, stores.size()));
+                })
                 .toList();
     }
 
@@ -303,6 +321,27 @@ public class CourseService {
         waypoints.add(new TmapClient.Waypoint("출발지", lat, lng));
         route.forEach(store -> waypoints.add(
                 new TmapClient.Waypoint(store.getName(), store.getLat(), store.getLng())));
+        return walk(route, waypoints, lat, lng);
+    }
+
+    /**
+     * 저장된 코스의 경로. 출발지는 첫 가게로 삼는다 —
+     * 지도 중심이 어디였는지는 저장하지 않기 때문이다.
+     */
+    private Walk walk(List<Store> route) {
+        if (route.size() < 2) {
+            return new Walk(List.of(), 0, route.size() * DWELL_MINUTES_PER_STORE);
+        }
+        List<TmapClient.Waypoint> waypoints = route.stream()
+                .map(store -> new TmapClient.Waypoint(
+                        store.getName(), store.getLat(), store.getLng()))
+                .toList();
+        Store first = route.get(0);
+        return walk(route, waypoints, first.getLat(), first.getLng());
+    }
+
+    private Walk walk(List<Store> route, List<TmapClient.Waypoint> waypoints,
+                      double lat, double lng) {
 
         Optional<TmapClient.WalkRoute> found = tmapClient.walkRoute(waypoints);
         if (found.isPresent()) {
@@ -343,10 +382,57 @@ public class CourseService {
         return total;
     }
 
+    /** 가게를 차례로 잇는 직선거리. 티맵 없이 우리가 계산하는 값이다. */
+    private double straightDistance(List<Store> stores) {
+        double total = 0;
+        for (int i = 1; i < stores.size(); i++) {
+            Store from = stores.get(i - 1);
+            Store to = stores.get(i);
+            total += GeoDistance.between(from.getLat(), from.getLng(), to.getLat(), to.getLng());
+        }
+        return total;
+    }
+
     /** 걷는 시간 + 각 가게에 머무는 시간. */
     private int totalDuration(double distanceMeters, int storeCount) {
         return (int) Math.round(distanceMeters / WALK_SPEED_METERS_PER_MINUTE)
                 + storeCount * DWELL_MINUTES_PER_STORE;
+    }
+
+    /**
+     * 코스 지점 중 공사 목록에 오른 곳.
+     *
+     * 코스 지점만 넣고 매칭하면 안 된다 — 매칭은 공사 지점 하나를 두고 주변 후보끼리 견줘
+     * 가장 그럴듯한 곳을 고르는 방식이라, 진짜 주인이 빠져 있으면 옆 가게가 대신 뽑힌다.
+     * 그렇다고 반경 후보를 통째로 넣으면 성동구 절반(7천 건)을 매칭하느라 1초를 넘긴다.
+     * 코스 지점 근처만 남겨 두 문제를 함께 피한다.
+     */
+    private Set<UUID> verifiedAround(List<Store> route, List<Store> pool) {
+        if (route.isEmpty()) {
+            return Set.of();
+        }
+        List<Store> neighbors = pool.stream()
+                .filter(candidate -> route.stream().anyMatch(store ->
+                        GeoDistance.between(store.getLat(), store.getLng(),
+                                candidate.getLat(), candidate.getLng())
+                                <= TourStoreMatcher.WIDE_RADIUS_METERS))
+                .toList();
+        return tourVerifier.verifiedAmong(neighbors);
+    }
+
+    /** 저장된 코스는 후보를 들고 있지 않아 이웃을 다시 읽는다. */
+    private Set<UUID> verifiedAroundSaved(List<Store> stores) {
+        if (stores.isEmpty()) {
+            return Set.of();
+        }
+        double lat = stores.stream().mapToDouble(Store::getLat).average().orElseThrow();
+        double lng = stores.stream().mapToDouble(Store::getLng).average().orElseThrow();
+        double span = stores.stream()
+                .mapToDouble(store -> GeoDistance.between(lat, lng, store.getLat(), store.getLng()))
+                .max().orElse(0);
+
+        int radius = (int) Math.ceil(span + TourStoreMatcher.WIDE_RADIUS_METERS);
+        return verifiedAround(stores, storeRepository.findWithinRadius(lat, lng, radius));
     }
 
     private boolean matchesPurpose(Store store, List<CoursePurpose> purposes) {
@@ -393,7 +479,8 @@ public class CourseService {
     private List<CourseStoreResponse> toStoreResponses(List<Store> route,
                                                        Map<UUID, StoreSizeStatus> statusByStore,
                                                        Map<UUID, List<String>> tagsByStore,
-                                                       boolean demo) {
+                                                       boolean demo,
+                                                       Set<UUID> verified) {
         List<CourseStoreResponse> responses = new ArrayList<>(route.size());
         for (int i = 0; i < route.size(); i++) {
             Store store = route.get(i);
@@ -408,7 +495,8 @@ public class CourseService {
                     i + 1,
                     status == null ? AvailabilityStatus.UNKNOWN : status.status(),
                     status == null ? 0 : status.getPossibleCount() + status.getImpossibleCount(),
-                    tagsByStore.getOrDefault(store.getStoreId(), List.of())));
+                    tagsByStore.getOrDefault(store.getStoreId(), List.of()),
+                    verified.contains(store.getStoreId())));
         }
         return responses;
     }

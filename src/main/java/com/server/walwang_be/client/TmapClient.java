@@ -1,7 +1,9 @@
 package com.server.walwang_be.client;
 
 import com.server.walwang_be.config.TmapProperties;
+import com.server.walwang_be.service.GeoDistance;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -15,11 +17,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 티맵 보행자 경로안내.
  *
  * 코스는 지점 여러 개를 잇는 것이라 구간(1→2, 2→3, ...)마다 한 번씩 호출한다.
+ * 구간끼리는 서로의 결과를 필요로 하지 않아 동시에 부른다 — 순차로 부르면
+ * 구간 수만큼 대기가 쌓여, 지점 4개짜리 코스가 그것만으로 1.5초를 넘긴다.
  * 지점이 n개면 호출은 n-1회다 — 무료 요금제가 하루 1,000건이라
  * 실제로 몇 번 나갔는지 로그로 남긴다.
  *
@@ -37,10 +46,18 @@ public class TmapClient {
     private final TmapProperties properties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final Executor executor;
 
-    public TmapClient(TmapProperties properties, ObjectMapper objectMapper) {
+    /** 이보다 가까우면 같은 자리로 본다. 좌표 정밀도 차이만큼의 여유다. */
+    private static final double SAME_SPOT_METERS = 5;
+    /** 부르지 않고 건너뛴 구간. 이을 점도, 더할 거리도 없다. */
+    private static final Leg EMPTY_LEG = new Leg(List.of(), 0, 0);
+
+    public TmapClient(TmapProperties properties, ObjectMapper objectMapper,
+                      @Qualifier("tmapExecutor") Executor executor) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.executor = executor;
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) properties.timeoutOrDefault().toMillis());
@@ -70,20 +87,40 @@ public class TmapClient {
             return Optional.empty();
         }
 
-        List<List<Double>> path = new ArrayList<>();
-        int totalDistanceMeters = 0;
-        int totalTimeSeconds = 0;
+        long startedAt = System.currentTimeMillis();
         int calls = 0;
 
+        // 구간을 한꺼번에 띄운다. 결과는 인덱스 순서 그대로 받아 이어 붙인다 —
+        // 먼저 끝난 순서로 담으면 경로선이 뒤엉킨다.
+        List<CompletableFuture<Optional<Leg>>> pending = new ArrayList<>(waypoints.size() - 1);
         for (int i = 0; i + 1 < waypoints.size(); i++) {
             Waypoint from = waypoints.get(i);
             Waypoint to = waypoints.get(i + 1);
 
-            Optional<Leg> leg = requestLeg(from, to);
+            if (sameSpot(from, to)) {
+                // 같은 건물에 든 가게라 좌표가 같다. 티맵은 길이가 0인 구간을 400으로 거절하고,
+                // 그 하나 때문에 코스 전체 경로선이 사라진다. 걸을 거리가 없으니 부르지 않는다.
+                pending.add(CompletableFuture.completedFuture(Optional.of(EMPTY_LEG)));
+                continue;
+            }
             calls++;
+            pending.add(CompletableFuture.supplyAsync(() -> requestLeg(from, to), executor));
+        }
+
+        List<Optional<Leg>> legs = awaitAll(pending);
+        if (legs == null) {
+            return Optional.empty();
+        }
+
+        List<List<Double>> path = new ArrayList<>();
+        int totalDistanceMeters = 0;
+        int totalTimeSeconds = 0;
+
+        for (int i = 0; i < legs.size(); i++) {
+            Optional<Leg> leg = legs.get(i);
             if (leg.isEmpty()) {
                 log.warn("티맵 경로 조회 실패로 경로선을 생략합니다 (구간 {}/{}, 호출 {}회)",
-                        i + 1, waypoints.size() - 1, calls);
+                        i + 1, pending.size(), calls);
                 return Optional.empty();
             }
             Leg found = leg.get();
@@ -92,8 +129,9 @@ public class TmapClient {
             totalTimeSeconds += found.timeSeconds();
         }
 
-        log.info("티맵 경로 조회: 지점 {}개 -> 구간 {}개, 호출 {}회 (거리 {}m, 도보 {}초)",
-                waypoints.size(), waypoints.size() - 1, calls, totalDistanceMeters, totalTimeSeconds);
+        log.info("티맵 경로 조회: 지점 {}개 -> 구간 {}개, 호출 {}회 (거리 {}m, 도보 {}초, {}ms)",
+                waypoints.size(), pending.size(), calls, totalDistanceMeters, totalTimeSeconds,
+                System.currentTimeMillis() - startedAt);
 
         return Optional.of(new WalkRoute(path, totalDistanceMeters, totalTimeSeconds, calls));
     }
@@ -180,6 +218,43 @@ public class TmapClient {
             }
         }
         return path.isEmpty() ? Optional.empty() : Optional.of(new Leg(path, distance, time));
+    }
+
+    /**
+     * 모든 구간이 끝나기를 전체 제한시간 안에서 기다린다.
+     *
+     * 구간마다 읽기 제한시간이 따로 걸려 있지만 그건 한 건 기준이라,
+     * 스레드가 모자라 뒤에서 대기하는 구간까지 더하면 전체가 그보다 오래 끌 수 있다.
+     * 화면이 기다리는 시간은 여기서 한 번 더 잘라 둔다.
+     *
+     * @return 제한시간을 넘기거나 끊기면 null — 호출한 쪽은 경로선 없이 진행한다
+     */
+    private List<Optional<Leg>> awaitAll(List<CompletableFuture<Optional<Leg>>> pending) {
+        long budgetMillis = properties.timeoutOrDefault().toMillis();
+        try {
+            CompletableFuture.allOf(pending.toArray(CompletableFuture[]::new))
+                    .get(budgetMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            log.warn("티맵 경로 조회가 {}ms를 넘겨 경로선을 생략합니다 (구간 {}개)",
+                    budgetMillis, pending.size());
+            // 아직 도는 건 결과를 쓰지 않는다. 이미 나간 요청은 각자 제한시간에 끝난다.
+            pending.forEach(future -> future.cancel(true));
+            return null;
+        } catch (ExecutionException e) {
+            log.warn("티맵 경로 조회 중 오류로 경로선을 생략합니다: {}", e.getCause());
+            pending.forEach(future -> future.cancel(true));
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            pending.forEach(future -> future.cancel(true));
+            return null;
+        }
+        return pending.stream().map(CompletableFuture::join).toList();
+    }
+
+    /** 두 지점이 사실상 같은 자리인지. 한 건물에 여러 가게가 든 경우가 많다. */
+    private boolean sameSpot(Waypoint from, Waypoint to) {
+        return GeoDistance.between(from.lat(), from.lng(), to.lat(), to.lng()) < SAME_SPOT_METERS;
     }
 
     /** 구간을 이을 때 앞 구간의 끝점과 겹치는 첫 점은 버린다. */

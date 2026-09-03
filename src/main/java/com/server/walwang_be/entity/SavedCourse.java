@@ -3,7 +3,6 @@ package com.server.walwang_be.entity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,8 +32,10 @@ import java.util.UUID;
 /**
  * 유저가 저장해 둔 코스.
  *
- * 추천 결과를 그대로 박제한다 — 나중에 가게 정보가 바뀌거나 사라져도
- * 저장 당시의 거리·시간·경로는 그대로 남아야 하기 때문이다.
+ * 어디를 갈지(가게와 방문 순서)만 저장한다.
+ *
+ * 경로선·거리·소요시간은 담지 않는다 — 티맵에서 얻은 값이라
+ * 약관상 24시간을 넘겨 보관할 수 없다. 조회할 때마다 다시 계산한다.
  */
 @Entity
 @Table(name = "saved_courses")
@@ -69,19 +70,6 @@ public class SavedCourse {
     @Column(nullable = false, length = 20)
     private CourseDuration duration;
 
-    /** 미터. */
-    @Column(name = "total_distance", nullable = false)
-    private int totalDistance;
-
-    /** 분. */
-    @Column(name = "total_duration", nullable = false)
-    private int totalDuration;
-
-    /** [[위도, 경도], ...] 형태의 좌표 목록. 지도에 선을 그릴 때 쓴다. */
-    @Convert(converter = WalkPathConverter.class)
-    @Column(name = "walk_path", columnDefinition = "text")
-    private List<List<Double>> walkPath = new ArrayList<>();
-
     @Column(length = 500)
     private String description;
 
@@ -100,8 +88,7 @@ public class SavedCourse {
     @Builder
     private SavedCourse(User user, String title, DogSize dogSize,
                         Collection<CoursePurpose> purposes, CourseDuration duration,
-                        int totalDistance, int totalDuration,
-                        List<List<Double>> walkPath, String description) {
+                        String description) {
         this.user = user;
         this.title = title;
         this.dogSize = dogSize;
@@ -109,9 +96,6 @@ public class SavedCourse {
                 ? EnumSet.noneOf(CoursePurpose.class)
                 : EnumSet.copyOf(purposes);
         this.duration = duration;
-        this.totalDistance = totalDistance;
-        this.totalDuration = totalDuration;
-        this.walkPath = walkPath == null ? new ArrayList<>() : new ArrayList<>(walkPath);
         this.description = description;
         this.createdAt = Instant.now();
     }

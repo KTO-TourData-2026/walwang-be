@@ -20,6 +20,25 @@ import java.util.concurrent.Executor;
 @EnableScheduling
 public class AsyncConfig {
 
+    /**
+     * 티맵 구간 조회용.
+     *
+     * 코스 하나에 구간이 2~4개인데 순차로 부르면 그만큼 시간이 쌓인다.
+     * 구간끼리는 서로를 필요로 하지 않아 동시에 불러도 된다.
+     *
+     * 도장 생성과 풀을 나눈다 — 한쪽이 밀린다고 다른 쪽이 굶으면 안 된다.
+     */
+    @Bean("tmapExecutor")
+    public Executor tmapExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("tmap-");
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("stampExecutor")
     public Executor stampExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

@@ -27,6 +27,8 @@ public record CourseResponse(
         String description,
         /** 조건에 맞는 곳이 부족해 기준을 낮췄는지. 화면에서 안내 문구를 띄우는 데 쓴다. */
         boolean relaxed,
-        List<CourseStoreResponse> stores
+        List<CourseStoreResponse> stores,
+        /** 코스 주변의 참고 장소(공사 데이터). 코스 지점과 섞지 않는다. */
+        List<NearbyPlaceResponse> nearby
 ) {
 }
