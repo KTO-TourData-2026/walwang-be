@@ -36,15 +36,22 @@ public class PassportService {
     private final PassportRepository passportRepository;
     private final StampGenerator stampGenerator;
 
+    /** @param demo 시연 모드면 시연 도장만, 아니면 실제 도장만 나간다. */
     @Transactional(readOnly = true)
-    public List<PassportSummaryResponse> findMine(UUID userId, int page, int size) {
+    public List<PassportSummaryResponse> findMine(UUID userId, int page, int size, boolean demo) {
         return passportRepository
-                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+                .findByUser_UserIdAndDemoOrderByCreatedAtDesc(userId, demo, PageRequest.of(page, size))
                 .map(PassportSummaryResponse::from)
                 .getContent();
     }
 
-    /** 남의 여권은 존재를 알려주지 않고 403으로 끊는다. */
+    /**
+     * 남의 여권은 존재를 알려주지 않고 403으로 끊는다.
+     *
+     * 지금 모드에 속하지 않는 도장은 내 것이어도 404로 끊는다 — 목록에 없는 도장을
+     * 상세로는 열 수 있으면 모드를 나눈 의미가 없다. 소유자 확인을 먼저 하므로
+     * 남의 여권이 모드에 따라 404와 403을 오가지는 않는다.
+     */
     @Transactional(readOnly = true)
     public PassportDetailResponse findOne(UUID userId, UUID passportId, boolean demo) {
         Passport passport = passportRepository.findWithReviewByPassportId(passportId)
@@ -52,6 +59,9 @@ public class PassportService {
 
         if (!passport.getUser().getUserId().equals(userId)) {
             throw new AccessDeniedException("자신의 여권만 볼 수 있습니다.");
+        }
+        if (passport.isDemo() != demo) {
+            throw new NoSuchElementException("존재하지 않는 여권입니다.");
         }
         return PassportDetailResponse.from(passport, demo);
     }
@@ -61,6 +71,9 @@ public class PassportService {
      *
      * 사진이 없으면 실루엣을 딸 것도 없으니 곧바로 기본 발도장으로 확정한다.
      * 호출하는 쪽의 트랜잭션 안에서 실행된다.
+     *
+     * is_demo는 리뷰에서 그대로 물려받는다 — 도장이 스스로 정할 값이 아니다.
+     * 리뷰가 어느 쪽에 속하는지가 곧 그 도장이 어느 쪽에 속하는지다.
      */
     @Transactional
     public Passport createFor(User user, Store store, Review review) {
@@ -72,6 +85,7 @@ public class PassportService {
                 .review(review)
                 .status(hasPhoto ? StampStatus.PENDING : StampStatus.FALLBACK)
                 .stampUrl(hasPhoto ? null : PawStampClient.DEFAULT_STAMP_URL)
+                .demo(review.isDemo())
                 .build());
     }
 

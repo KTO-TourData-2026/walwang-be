@@ -61,12 +61,16 @@ public class StoreController {
         return ResponseEntity.ok(storeService.search(keyword, demo));
     }
 
-    /** 가게 상세. 리뷰 본문은 빠지고 썸네일과 태그만 포함된다. */
+    /**
+     * 가게 상세. 리뷰 본문은 빠지고 썸네일과 태그만 포함된다.
+     * 인증을 거치지 않은 리뷰의 썸네일은 작성자 본인에게만 나간다.
+     */
     @GetMapping("/{storeId}")
     public ResponseEntity<StoreDetailResponse> findDetail(
+            @AuthenticationPrincipal UUID userId,
             @PathVariable UUID storeId,
             @RequestParam(defaultValue = "false") boolean demo) {
-        return ResponseEntity.ok(storeService.findDetail(storeId, demo));
+        return ResponseEntity.ok(storeService.findDetail(storeId, demo, userId));
     }
 
     /** 가게의 리뷰 목록. 최신순. */
@@ -80,15 +84,16 @@ public class StoreController {
         return ResponseEntity.ok(storeService.findReviews(storeId, page, size, demo, userId));
     }
 
-    /** 가게 저장. 이미 저장돼 있어도 200. */
+    /** 가게 저장. 이미 저장돼 있어도 200. demo가 정한 쪽에 담긴다. */
     @PostMapping("/{storeId}/save")
     public ResponseEntity<Void> saveStore(@AuthenticationPrincipal UUID userId,
-                                          @PathVariable UUID storeId) {
-        storeService.saveStore(userId, storeId);
+                                          @PathVariable UUID storeId,
+                                          @RequestParam(defaultValue = "false") boolean demo) {
+        storeService.saveStore(userId, storeId, demo);
         return ResponseEntity.ok().build();
     }
 
-    /** 저장 해제. 저장돼 있지 않아도 200. */
+    /** 저장 해제. 저장돼 있지 않아도 200. 축을 가리지 않고 지운다. */
     @DeleteMapping("/{storeId}/save")
     public ResponseEntity<Void> unsaveStore(@AuthenticationPrincipal UUID userId,
                                             @PathVariable UUID storeId) {

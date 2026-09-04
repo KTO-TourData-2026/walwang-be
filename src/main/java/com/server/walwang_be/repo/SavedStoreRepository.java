@@ -11,16 +11,23 @@ import java.util.UUID;
 
 public interface SavedStoreRepository extends JpaRepository<SavedStore, SavedStoreId> {
 
-    boolean existsByUser_UserIdAndStore_StoreId(UUID userId, UUID storeId);
+    /** 중복 저장 판별. 시연 쪽과 실제 쪽은 따로 세므로 demo까지 봐야 한다. */
+    boolean existsByUser_UserIdAndStore_StoreIdAndDemo(UUID userId, UUID storeId, boolean demo);
 
-    /** 호출한 쪽에 트랜잭션이 필요하다. */
+    /**
+     * 저장 해제. 축을 가리지 않고 지운다 —
+     * 저장을 푼 가게가 다른 모드에 남아 있으면 푼 것으로 보이지 않는다.
+     * 호출한 쪽에 트랜잭션이 필요하다.
+     */
     long deleteByUser_UserIdAndStore_StoreId(UUID userId, UUID storeId);
 
     /** 저장 목록. 카드에 가게 정보가 그대로 나가므로 store를 함께 끌어온다. */
     @EntityGraph(attributePaths = "store")
-    Page<SavedStore> findByUser_UserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
+    Page<SavedStore> findByUser_UserIdAndDemoOrderByCreatedAtDesc(
+            UUID userId, boolean demo, Pageable pageable);
 
-    long countByUser_UserId(UUID userId);
+    /** 마이 화면의 저장 장소 수. 목록과 같은 축으로 센다. */
+    long countByUser_UserIdAndDemo(UUID userId, boolean demo);
 
     /** 회원 탈퇴 시 함께 정리한다. */
     void deleteByUser_UserId(UUID userId);

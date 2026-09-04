@@ -60,16 +60,25 @@ public class Passport {
     @Column(nullable = false, length = 20)
     private StampStatus status;
 
+    /**
+     * 시연 중에 찍힌 도장인지. 리뷰의 is_demo를 그대로 물려받는다.
+     * 조회는 항상 이 값으로 갈라진다 — 시연 모드를 끄면 시연 도장은 보이지 않아야 한다.
+     */
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Builder
-    private Passport(User user, Review review, Store store, StampStatus status, String stampUrl) {
+    private Passport(User user, Review review, Store store, StampStatus status,
+                     String stampUrl, boolean demo) {
         this.user = user;
         this.review = review;
         this.store = store;
         this.status = status;
         this.stampUrl = stampUrl;
+        this.demo = demo;
         this.createdAt = Instant.now();
     }
 

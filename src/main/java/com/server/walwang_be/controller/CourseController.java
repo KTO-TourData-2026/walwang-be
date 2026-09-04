@@ -40,11 +40,12 @@ public class CourseController {
         return ResponseEntity.ok(courseService.recommend(request, demo));
     }
 
-    /** 코스 저장. storeIds의 순서가 곧 방문 순서다. */
+    /** 코스 저장. storeIds의 순서가 곧 방문 순서다. demo가 정한 쪽에 담긴다. */
     @PostMapping("/courses")
     public ResponseEntity<CourseCreateResponse> save(@AuthenticationPrincipal UUID userId,
-                                                     @Valid @RequestBody CourseSaveRequest request) {
-        return ResponseEntity.ok(new CourseCreateResponse(courseService.save(userId, request)));
+                                                     @Valid @RequestBody CourseSaveRequest request,
+                                                     @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(new CourseCreateResponse(courseService.save(userId, request, demo)));
     }
 
     /** 저장한 코스 상세. 남의 코스면 403. */

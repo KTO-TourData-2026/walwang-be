@@ -41,13 +41,17 @@ public class ReviewController {
      * data 파트는 Content-Type이 application/json이어야 한다 —
      * 안 그러면 Spring이 문자열로 받아 역직렬화하지 못한다.
      * photo는 선택이다(거절 리뷰에는 사진이 없다).
+     *
+     * demo=true면 영수증 인증을 건너뛴다. 대신 그 리뷰는 verified=false로 남아
+     * 작성자 본인에게만 보이고 점수·임베딩에는 들어가지 않는다. 도장은 정상적으로 찍힌다.
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReviewCreateResponse> create(
             @AuthenticationPrincipal UUID userId,
             @RequestPart("data") @Valid ReviewCreateRequest data,
-            @RequestPart(value = "photo", required = false) MultipartFile photo) {
-        return ResponseEntity.ok(reviewService.create(userId, data, photo));
+            @RequestPart(value = "photo", required = false) MultipartFile photo,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(reviewService.create(userId, data, photo, demo));
     }
 
     /**
@@ -55,13 +59,16 @@ public class ReviewController {
      * 리뷰 등록은 그 토큰이 있어야 통과한다.
      *
      * 상호명이 안 맞는 건 실패가 아니라 verified=false인 200 응답이다.
+     *
+     * demo=true면 응답의 matchedName이 가명으로 나간다 — 대조 자체는 실제 상호로 한다.
      */
     @PostMapping(value = "/receipt-verify", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReceiptVerifyResponse> verifyReceipt(
             @AuthenticationPrincipal UUID userId,
             @RequestPart("receipt") MultipartFile receipt,
-            @RequestParam("store_id") UUID storeId) {
-        return ResponseEntity.ok(reviewService.verifyReceipt(userId, storeId, receipt));
+            @RequestParam("store_id") UUID storeId,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        return ResponseEntity.ok(reviewService.verifyReceipt(userId, storeId, receipt, demo));
     }
 
     /**

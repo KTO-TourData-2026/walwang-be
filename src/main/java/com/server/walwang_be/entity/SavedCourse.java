@@ -82,14 +82,19 @@ public class SavedCourse {
     @OrderBy("arrivalOrder ASC")
     private List<SavedCourseStore> stores = new ArrayList<>();
 
+    /** 시연 중에 저장한 코스인지. 조회는 항상 이 값으로 갈라진다. */
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Builder
     private SavedCourse(User user, String title, DogSize dogSize,
                         Collection<CoursePurpose> purposes, CourseDuration duration,
-                        String description) {
+                        String description, boolean demo) {
         this.user = user;
+        this.demo = demo;
         this.title = title;
         this.dogSize = dogSize;
         this.purposes = (purposes == null || purposes.isEmpty())

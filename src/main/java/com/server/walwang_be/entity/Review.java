@@ -87,6 +87,19 @@ public class Review {
     private boolean demo;
 
     /**
+     * 영수증 인증을 거친 리뷰인지.
+     *
+     * 시연 모드는 OCR을 건너뛰므로 가보지 않은 가게에도 리뷰를 쓸 수 있다.
+     * 그렇게 들어온 리뷰는 실제 데이터에 섞이면 안 된다 — 읽는 쪽은 blind_status와
+     * 같은 자리에서 이 값을 존중해야 한다. 남에게는 보이지 않고, 집계에도 들어가지 않는다.
+     *
+     * is_demo와는 축이 다르다. AI팀이 넣은 목 리뷰는 시연용이지만 verified=true라
+     * 시연 모드에서 모두에게 보인다.
+     */
+    @Column(name = "verified", nullable = false)
+    private boolean verified;
+
+    /**
      * 노출 상태. 신고가 들어와도 서버는 건드리지 않고 관리자가 DB에서 직접 바꾼다.
      * 읽는 쪽은 이 값을 존중해야 한다 — 가려둔 리뷰가 집계에 남으면 가린 의미가 없다.
      */
@@ -101,7 +114,7 @@ public class Review {
     @Builder
     private Review(User user, Store store, boolean dogAllowed, DogSize dogSize,
                    String photoUrl, String thumbnailUrl, String content,
-                   Collection<StoreTag> tags, boolean demo) {
+                   Collection<StoreTag> tags, boolean demo, boolean verified) {
         this.user = user;
         this.store = store;
         this.dogAllowed = dogAllowed;
@@ -114,6 +127,7 @@ public class Review {
                 : EnumSet.copyOf(tags);
         this.createdAt = Instant.now();
         this.demo = demo;
+        this.verified = verified;
         this.blindStatus = BlindStatus.NORMAL;
     }
 }

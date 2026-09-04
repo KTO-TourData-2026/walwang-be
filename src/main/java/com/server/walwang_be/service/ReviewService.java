@@ -76,8 +76,13 @@ public class ReviewService {
      * 영수증 인증. 상호명이 맞으면 30분짜리 토큰을 내주고,
      * 리뷰 등록은 그 토큰이 있어야만 통과한다 — 가보지 않은 가게에 리뷰를 쓰지 못하게 하는 장치다.
      */
+    /**
+     * @param demo 대조는 언제나 실제 상호로 한다 — 영수증에 찍힌 건 실명이라
+     *             가명으로 맞춰보면 무엇도 통과하지 못한다. 가명은 응답에만 쓴다.
+     */
     @Transactional(readOnly = true)
-    public ReceiptVerifyResponse verifyReceipt(UUID userId, UUID storeId, MultipartFile receipt) {
+    public ReceiptVerifyResponse verifyReceipt(UUID userId, UUID storeId,
+                                               MultipartFile receipt, boolean demo) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
         validateReceiptFile(receipt);
@@ -85,7 +90,8 @@ public class ReviewService {
         // 읽기 실패(422)와 OCR 장애(503)는 클라이언트가 다르게 대응해야 하므로
         // 여기서 잡지 않고 예외 그대로 올려보낸다.
         ReceiptOcrClient.OcrResult ocr = ocrClient.verify(receipt, storeId, store.getName());
-        String matchedName = ocr.matchedName();
+        // OCR이 읽어온 건 영수증의 실제 상호다. 시연 중에는 그대로 내보내지 않는다.
+        String matchedName = demo ? store.displayName(true) : ocr.matchedName();
 
         // 통과 기준은 AI가 준 verified가 아니라 우리가 정한다 —
         // 임계값을 조정할 때 AI 서비스를 다시 배포하지 않아도 되게 하려는 것이다.
@@ -99,9 +105,21 @@ public class ReviewService {
         return ReceiptVerifyResponse.verified(matchedName, similarity, token);
     }
 
+    /**
+     * 리뷰 등록.
+     *
+     * @param demo 시연 모드. OCR 인증을 건너뛰는 대신 그 리뷰는 실제 데이터에 섞이지 않는다 —
+     *             verified=false로 남아 남에게 보이지 않고, 집계·임베딩도 건드리지 않는다.
+     *             도장은 정상적으로 찍힌다(여권도 is_demo=true로 생긴다).
+     */
     @Transactional
-    public ReviewCreateResponse create(UUID userId, ReviewCreateRequest request, MultipartFile photo) {
-        consumeReceiptToken(userId, request);
+    public ReviewCreateResponse create(UUID userId, ReviewCreateRequest request,
+                                       MultipartFile photo, boolean demo) {
+        // 시연 모드는 영수증을 받지 않는다. 가보지 않은 가게에도 쓸 수 있다는 뜻이라
+        // 아래에서 verified=false로 남겨 실제 데이터와 갈라 둔다.
+        if (!demo) {
+            consumeReceiptToken(userId, request);
+        }
 
         Store store = storeRepository.findById(request.storeId())
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
@@ -131,14 +149,20 @@ public class ReviewService {
                 .thumbnailUrl(thumbnailUrl)
                 .content(request.content())
                 .tags(tags)
-                // 클라이언트가 뭘 보내든 실제 이용자의 리뷰는 항상 false다.
-                .demo(false)
+                .demo(demo)
+                // 영수증을 확인한 리뷰만 인증으로 친다. 시연 리뷰는 확인한 적이 없다.
+                .verified(!demo)
                 .build());
 
         reviewRepository.flush();
-        recompute(store);
+        // 시연 리뷰는 점수를 움직이지 않는다. 인증을 거치지 않았으므로 집계에서 빠진다.
+        if (!demo) {
+            recompute(store);
+        }
 
         // 도장은 동반 가능했던 방문에만 찍는다 — 거절당한 기록은 여권에 남기지 않는다.
+        // 시연 리뷰에도 그대로 찍는다. 도장 생성이 시연에서 보여줄 것 중 하나이고,
+        // 여권은 리뷰의 is_demo를 물려받아 시연 쪽에만 남는다.
         UUID passportId = request.dogAllowed()
                 ? passportService.createFor(user, store, review).getPassportId()
                 : null;
@@ -150,7 +174,11 @@ public class ReviewService {
 
         // 리뷰가 하나 붙으면 그 가게의 설명이 달라진다. AI가 벡터를 다시 계산하도록
         // 알려만 둔다 — 실패해도 리뷰 등록은 그대로 성공이다.
-        afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
+        // 시연 리뷰는 부르지 않는다. 임베딩은 실제 리뷰로 만든 것이라
+        // 인증 없이 쓴 문장이 섞이면 그 표현으로 가게가 검색된다.
+        if (!demo) {
+            afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
+        }
 
         return new ReviewCreateResponse(
                 review.getReviewId(),
@@ -169,9 +197,10 @@ public class ReviewService {
             throw new AccessDeniedException("자신이 쓴 리뷰만 삭제할 수 있습니다.");
         }
         Store store = review.getStore();
-        // 엔티티가 사라진 뒤에는 못 읽으므로 URL을 미리 빼둔다.
+        // 엔티티가 사라진 뒤에는 못 읽으므로 URL과 인증 여부를 미리 빼둔다.
         String photoUrl = review.getPhotoUrl();
         String thumbnailUrl = review.getThumbnailUrl();
+        boolean counted = review.isVerified();
 
         // 여권과 신고가 리뷰를 참조하므로 먼저 지운다.
         // 다녀온 증거가 사라지면 도장도 남지 않고, 사라진 리뷰를 향한 신고도 의미가 없다.
@@ -181,10 +210,14 @@ public class ReviewService {
         // 재집계가 삭제된 리뷰를 다시 세지 않도록 먼저 DB에 반영한다.
         reviewRepository.flush();
 
-        recompute(store);
+        // 애초에 세지도, 임베딩에 넣지도 않은 리뷰라면 빠져도 달라지는 게 없다.
+        // 등록 때 부르지 않았으니 삭제 때도 부르지 않는다.
+        if (counted) {
+            recompute(store);
+            // 리뷰가 빠져도 가게 설명이 달라진다. 등록 때와 같은 이유로 갱신을 알린다.
+            afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
+        }
         deletePhotosAfterCommit(photoUrl, thumbnailUrl);
-        // 리뷰가 빠져도 가게 설명이 달라진다. 등록 때와 같은 이유로 갱신을 알린다.
-        afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
     }
 
     /**
@@ -219,6 +252,11 @@ public class ReviewService {
     }
 
     private void consumeReceiptToken(UUID userId, ReviewCreateRequest request) {
+        // DTO에서 @NotBlank를 뺐으므로(시연 모드가 토큰 없이 온다) 여기서 막는다.
+        // 400을 그대로 유지하려고 IllegalArgumentException을 쓴다.
+        if (request.receiptToken() == null || request.receiptToken().isBlank()) {
+            throw new IllegalArgumentException("영수증 인증이 필요합니다.");
+        }
         ReceiptTokenRepository.Issued issued = receiptTokenRepository.find(request.receiptToken())
                 .orElseThrow(() -> new AccessDeniedException("영수증 인증이 만료되었습니다. 다시 인증해 주세요."));
 
@@ -261,7 +299,8 @@ public class ReviewService {
         storeSizeStatusRepository.flush();
 
         int counted = reviewRepository
-                .findByStore_StoreIdAndDemoAndBlindStatus(storeId, demo, BlindStatus.NORMAL)
+                .findByStore_StoreIdAndDemoAndVerifiedTrueAndBlindStatus(
+                        storeId, demo, BlindStatus.NORMAL)
                 .size();
 
         List<RecomputeResultResponse.SizeResult> sizes =
@@ -273,7 +312,8 @@ public class ReviewService {
         if (!demo) {
             afterCommit(() -> embeddingService.refreshAsync(storeId));
         }
-        return new RecomputeResultResponse(storeId, store.getName(), counted, sizes);
+        // 관리자용 응답이라도 가명 정책 밖에 두지 않는다 — demo가 정한 이름으로 나간다.
+        return new RecomputeResultResponse(storeId, store.displayName(demo), counted, sizes);
     }
 
     /**
@@ -298,7 +338,9 @@ public class ReviewService {
     public void recompute(Store store, boolean demo) {
         // demo가 정한 쪽 리뷰만 센다. 가려진 리뷰는 어느 쪽이든 뺀다 —
         // 화면에서 감췄는데 점수에 남아 있으면 가린 의미가 없다.
-        List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemoAndBlindStatus(
+        // 인증을 거치지 않은 리뷰도 같은 이유로 뺀다 — 영수증 없이 쓸 수 있는 리뷰가
+        // 점수를 움직이면 인증을 둔 의미가 없다.
+        List<Review> reviews = reviewRepository.findByStore_StoreIdAndDemoAndVerifiedTrueAndBlindStatus(
                 store.getStoreId(), demo, BlindStatus.NORMAL);
         Instant now = Instant.now();
 

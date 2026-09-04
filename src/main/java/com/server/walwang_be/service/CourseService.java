@@ -123,8 +123,9 @@ public class CourseService {
                 nearbyPlaceFinder.around(route));
     }
 
+    /** @param demo 시연 중에 저장한 코스는 시연 쪽에만 남는다. */
     @Transactional
-    public UUID save(UUID userId, CourseSaveRequest request) {
+    public UUID save(UUID userId, CourseSaveRequest request, boolean demo) {
         List<Store> stores = loadStoresInOrder(request.storeIds());
 
         SavedCourse course = SavedCourse.builder()
@@ -135,6 +136,7 @@ public class CourseService {
                 .purposes(request.purposes())
                 .duration(request.duration())
                 .description(request.description())
+                .demo(demo)
                 .build();
 
         for (int i = 0; i < stores.size(); i++) {
@@ -143,9 +145,22 @@ public class CourseService {
         return savedCourseRepository.save(course).getCourseId();
     }
 
-    /** 저장된 코스 조회. 남의 코스는 존재를 알려주지 않고 403으로 끊는다. */
+    /**
+     * 저장된 코스 조회. 남의 코스는 존재를 알려주지 않고 403으로 끊는다.
+     *
+     * purposes를 지연 로딩으로 돌렸으므로 세션이 이 메서드 끝까지 살아 있어야 한다 —
+     * open-in-view 설정에 기대면 그 설정을 끄는 날 이 자리가 깨진다.
+     */
+    @Transactional(readOnly = true)
     public CourseResponse findOne(UUID userId, UUID courseId, boolean demo) {
         SavedCourse course = loadOwnedCourse(userId, courseId);
+
+        // 지금 모드에 속하지 않는 코스는 내 것이어도 404로 끊는다 — 목록에 없는 코스를
+        // 상세로는 열 수 있으면 모드를 나눈 의미가 없다. 여권 상세와 같은 규칙이다.
+        // 소유자 확인이 먼저라 남의 코스가 모드에 따라 404와 403을 오가지는 않는다.
+        if (course.isDemo() != demo) {
+            throw new NoSuchElementException("존재하지 않는 코스입니다.");
+        }
 
         List<Store> stores = course.getStores().stream()
                 .map(SavedCourseStore::getStore)
@@ -172,9 +187,15 @@ public class CourseService {
                 nearbyPlaceFinder.around(stores));
     }
 
-    /** 저장한 코스 목록. 최근에 저장한 것부터. */
+    /**
+     * 저장한 코스 목록. 최근에 저장한 것부터.
+     *
+     * 여기 EntityGraph는 컬렉션을 stores 하나만 끌어오므로 행이 곱해지지 않는다.
+     * purposes를 더하는 순간 상세 조회와 같은 중복이 생기니 늘리지 않는다.
+     */
+    @Transactional(readOnly = true)
     public List<SavedCourseSummaryResponse> findMyCourses(UUID userId, boolean demo) {
-        return savedCourseRepository.findByUser_UserIdOrderByCreatedAtDesc(userId).stream()
+        return savedCourseRepository.findByUser_UserIdAndDemoOrderByCreatedAtDesc(userId, demo).stream()
                 .map(course -> {
                     List<Store> stores = course.getStores().stream()
                             .map(SavedCourseStore::getStore)

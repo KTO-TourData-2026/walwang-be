@@ -61,7 +61,13 @@ public class StoreService {
         return toCards(storeRepository.findByNameContainingIgnoreCase(keyword), null, demo);
     }
 
-    public StoreDetailResponse findDetail(UUID storeId, boolean demo) {
+    /**
+     * 가게 상세.
+     *
+     * viewerId는 썸네일을 고르는 데만 쓴다 — 인증을 거치지 않은 리뷰의 사진은
+     * 작성자 본인에게만 보인다. 비로그인이면 null이 들어와 전부 빠진다.
+     */
+    public StoreDetailResponse findDetail(UUID storeId, boolean demo, UUID viewerId) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
@@ -76,8 +82,8 @@ public class StoreService {
                 toSizeStatus(storeSizeStatusRepository.findByStore_StoreId(storeId), null);
 
         List<String> thumbnailUrls = reviewRepository
-                .findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
-                        storeId, demo, BlindStatus.NORMAL, PageRequest.of(0, THUMBNAIL_LIMIT))
+                .findVisibleByStore(storeId, demo, BlindStatus.NORMAL, viewerId,
+                        PageRequest.of(0, THUMBNAIL_LIMIT))
                 .map(Review::getThumbnailUrl)
                 .getContent();
 
@@ -85,11 +91,6 @@ public class StoreService {
                 petVerified(store));
     }
 
-    /**
-     * 가게의 리뷰 목록.
-     *
-     * viewerId는 mine을 채우는 데만 쓴다. 비로그인이면 null이 들어와 전부 false가 된다.
-     */
     /**
      * 이 가게가 공사 반려동물 동반 목록에 있는지. 요청 때마다 공사 API로 확인한다.
      *
@@ -109,11 +110,18 @@ public class StoreService {
                 TourStoreMatcher.WIDE_RADIUS_METERS).contains(store.getStoreId());
     }
 
+    /**
+     * 가게의 리뷰 목록.
+     *
+     * viewerId는 두 가지에 쓴다 — 응답의 mine을 채우고, 인증을 거치지 않은 리뷰를
+     * 작성자 본인에게만 남긴다. 비로그인이면 null이 들어와 mine은 전부 false가 되고
+     * verified=false인 리뷰는 하나도 나오지 않는다.
+     */
     public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo,
                                             UUID viewerId) {
         return reviewRepository
-                .findByStore_StoreIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
-                        storeId, demo, BlindStatus.NORMAL, PageRequest.of(page, size))
+                .findVisibleByStore(storeId, demo, BlindStatus.NORMAL, viewerId,
+                        PageRequest.of(page, size))
                 .map(review -> ReviewResponse.from(review, viewerId))
                 .getContent();
     }
@@ -121,10 +129,12 @@ public class StoreService {
     /**
      * 가게 저장. 이미 저장돼 있으면 아무것도 하지 않는다 —
      * 같은 버튼을 두 번 눌러도 실패로 보이지 않게 하려는 것이다.
+     *
+     * demo가 정한 쪽에 저장한다. 같은 가게를 시연 쪽과 실제 쪽에 각각 담을 수 있다.
      */
     @Transactional
-    public void saveStore(UUID userId, UUID storeId) {
-        if (savedStoreRepository.existsByUser_UserIdAndStore_StoreId(userId, storeId)) {
+    public void saveStore(UUID userId, UUID storeId, boolean demo) {
+        if (savedStoreRepository.existsByUser_UserIdAndStore_StoreIdAndDemo(userId, storeId, demo)) {
             return;
         }
         Store store = storeRepository.findById(storeId)
@@ -134,19 +144,23 @@ public class StoreService {
                 // 저장만 할 것이라 User를 실제로 읽어올 필요가 없다.
                 .user(userRepository.getReferenceById(userId))
                 .store(store)
+                .demo(demo)
                 .build());
     }
 
-    /** 저장 해제. 저장돼 있지 않아도 성공으로 본다(저장과 같은 이유). */
+    /**
+     * 저장 해제. 저장돼 있지 않아도 성공으로 본다(저장과 같은 이유).
+     * 축을 가리지 않고 지운다 — 다른 모드에 남아 있으면 푼 것으로 보이지 않는다.
+     */
     @Transactional
     public void unsaveStore(UUID userId, UUID storeId) {
         savedStoreRepository.deleteByUser_UserIdAndStore_StoreId(userId, storeId);
     }
 
-    /** 내가 저장한 가게 목록. 최근에 저장한 것부터. */
+    /** 내가 저장한 가게 목록. 최근에 저장한 것부터. demo가 정한 쪽만 나간다. */
     public List<StoreCardResponse> findSavedStores(UUID userId, int page, int size, boolean demo) {
         List<Store> stores = savedStoreRepository
-                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+                .findByUser_UserIdAndDemoOrderByCreatedAtDesc(userId, demo, PageRequest.of(page, size))
                 .map(SavedStore::getStore)
                 .getContent();
 
