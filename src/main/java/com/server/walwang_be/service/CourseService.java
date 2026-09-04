@@ -1,5 +1,6 @@
 package com.server.walwang_be.service;
 
+import com.server.walwang_be.dto.CourseLegResponse;
 import com.server.walwang_be.dto.CourseRecommendRequest;
 import com.server.walwang_be.dto.CourseResponse;
 import com.server.walwang_be.dto.CourseSaveRequest;
@@ -115,6 +116,7 @@ public class CourseService {
                 walk.distanceMeters(),
                 walk.durationMinutes(),
                 walk.path(),
+                walk.legs(),
                 null,
                 relaxed,
                 storeCandidates.toResponses(route, statusByStore, storeCandidates.tags(route), demo),
@@ -162,6 +164,7 @@ public class CourseService {
                 walk.distanceMeters(),
                 walk.durationMinutes(),
                 walk.path(),
+                walk.legs(),
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
@@ -345,7 +348,7 @@ public class CourseService {
      */
     private Walk walk(List<Store> route, double lat, double lng) {
         if (route.isEmpty()) {
-            return new Walk(List.of(), 0, 0);
+            return new Walk(List.of(), List.of(), 0, 0);
         }
         List<TmapClient.Waypoint> waypoints = new ArrayList<>(route.size() + 1);
         waypoints.add(new TmapClient.Waypoint("출발지", lat, lng));
@@ -360,7 +363,8 @@ public class CourseService {
      */
     private Walk walk(List<Store> route) {
         if (route.size() < 2) {
-            return new Walk(List.of(), 0, route.size() * DWELL_MINUTES_PER_STORE);
+            // 지점이 하나면 이을 구간이 없다. legs는 n-1 = 0개.
+            return new Walk(List.of(), List.of(), 0, route.size() * DWELL_MINUTES_PER_STORE);
         }
         List<TmapClient.Waypoint> waypoints = route.stream()
                 .map(store -> new TmapClient.Waypoint(
@@ -379,16 +383,54 @@ public class CourseService {
             // 티맵이 준 시간은 걷는 시간뿐이라, 머무는 시간을 더해야 코스 소요시간이 된다.
             int minutes = (int) Math.round(walk.timeSeconds() / 60.0)
                     + route.size() * DWELL_MINUTES_PER_STORE;
-            return new Walk(walk.path(), walk.distanceMeters(), minutes);
+            return new Walk(walk.path(),
+                    toLegs(walk.legs(), waypoints.size() - route.size()),
+                    walk.distanceMeters(), minutes);
         }
         // 경로선 없이 간다. 거리·시간은 직선 기준 추정으로 채운다.
+        // legs는 비운다 — 직선으로 나눈 구간별 값은 실제로 걷는 거리가 아니라,
+        // 화면에 "여기서 저기까지 320m"라고 적어 놓으면 틀린 값을 읽게 된다.
         double distance = totalDistance(toWalkPath(route, lat, lng));
-        return new Walk(List.of(), (int) Math.round(distance),
+        return new Walk(List.of(), List.of(), (int) Math.round(distance),
                 totalDuration(distance, route.size()));
     }
 
-    /** 화면에 그릴 경로와 그 합계. */
-    private record Walk(List<List<Double>> path, int distanceMeters, int durationMinutes) {
+    /**
+     * 티맵 구간을 stores 배열 기준 인덱스로 옮긴다.
+     *
+     * 추천에서는 waypoints 맨 앞에 지도 중심(출발지)이 하나 더 붙는다. 그 지점은 stores에
+     * 없어 가리킬 인덱스가 없으므로 출발지→첫 가게 구간은 legs에서 빼고 총거리에만 남긴다 —
+     * 저장된 코스에는 출발지가 없으니, 그래야 같은 코스가 추천과 조회에서 같은 legs를 낸다.
+     *
+     * 5m 미만이라 티맵을 부르지 않은 구간도 거리 0으로 그대로 들어온다.
+     * 빼 버리면 뒤 구간의 인덱스가 한 칸씩 밀려 화면이 엉뚱한 가게 사이에 값을 적는다.
+     *
+     * @param offset waypoints가 stores보다 앞에서 몇 개 더 시작하는지 — 추천 1, 저장 코스 0
+     */
+    private List<CourseLegResponse> toLegs(List<TmapClient.RouteLeg> legs, int offset) {
+        List<CourseLegResponse> result = new ArrayList<>(Math.max(legs.size() - offset, 0));
+        for (int i = offset; i < legs.size(); i++) {
+            TmapClient.RouteLeg leg = legs.get(i);
+            result.add(new CourseLegResponse(i - offset, i - offset + 1,
+                    leg.distanceMeters(), walkMinutes(leg.timeSeconds())));
+        }
+        return result;
+    }
+
+    /**
+     * 구간의 걷는 시간을 분으로. 올려서 짧은 구간이 0분으로 사라지지 않게 한다 —
+     * 40초 거리라도 화면에는 걸어야 할 구간으로 보여야 한다.
+     *
+     * 0초는 그대로 0분이다. 걷지 않아서 0인 구간(5m 미만이라 건너뛴, 같은 건물)이라
+     * 여기까지 1분으로 올리면 없는 거리를 걷는 것처럼 보인다.
+     */
+    private int walkMinutes(int seconds) {
+        return seconds <= 0 ? 0 : (seconds + 59) / 60;
+    }
+
+    /** 화면에 그릴 경로와 그 합계, 그리고 지점 사이 구간별 값. */
+    private record Walk(List<List<Double>> path, List<CourseLegResponse> legs,
+                        int distanceMeters, int durationMinutes) {
     }
 
     /** 지도 중심에서 출발해 가게를 차례로 잇는다. [[위도, 경도], ...] */

@@ -76,10 +76,37 @@ public class NearbyPlaceFinder {
         return new NearbyPlaceResponse(
                 String.valueOf(item.get("title")),
                 resolveType(item),
+                address(item),
                 lat,
                 lng,
                 image.isBlank() ? null : image,
                 NearbyPlaceResponse.SOURCE);
+    }
+
+    /**
+     * addr1(기본주소)과 addr2(상세주소)를 한 줄로 합친다.
+     *
+     * 둘로 나눠 주면 화면이 매번 이어 붙여야 하는데, addr2는 있어도 "(성수동1가)" 같은
+     * 꼬리라 따로 쓸 일이 없다. 없는 쪽은 그냥 빼고, 둘 다 없으면 null이다 —
+     * 빈 문자열을 보내면 화면에서 주소 줄이 빈칸으로 남는다.
+     */
+    private String address(Map<String, Object> item) {
+        String addr1 = text(item.get("addr1"));
+        String addr2 = text(item.get("addr2"));
+
+        if (addr1 == null) {
+            return addr2;
+        }
+        return addr2 == null ? addr1 : addr1 + " " + addr2;
+    }
+
+    /** 공사 데이터는 빈 값을 ""로도, 키 없음으로도 보낸다. 둘 다 null로 맞춘다. */
+    private String text(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = String.valueOf(value).trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String resolveType(Map<String, Object> item) {

@@ -113,6 +113,9 @@ public class TmapClient {
         }
 
         List<List<Double>> path = new ArrayList<>();
+        // 구간별 거리·시간. 건너뛴 구간도 0으로 자리를 지켜야
+        // 지점 n개에 구간 n-1개라는 짝이 끝까지 맞는다.
+        List<RouteLeg> summaries = new ArrayList<>(legs.size());
         int totalDistanceMeters = 0;
         int totalTimeSeconds = 0;
 
@@ -125,6 +128,7 @@ public class TmapClient {
             }
             Leg found = leg.get();
             appendPath(path, found.path());
+            summaries.add(new RouteLeg(found.distanceMeters(), found.timeSeconds()));
             totalDistanceMeters += found.distanceMeters();
             totalTimeSeconds += found.timeSeconds();
         }
@@ -133,7 +137,8 @@ public class TmapClient {
                 waypoints.size(), pending.size(), calls, totalDistanceMeters, totalTimeSeconds,
                 System.currentTimeMillis() - startedAt);
 
-        return Optional.of(new WalkRoute(path, totalDistanceMeters, totalTimeSeconds, calls));
+        return Optional.of(new WalkRoute(path, List.copyOf(summaries),
+                totalDistanceMeters, totalTimeSeconds, calls));
     }
 
     private Optional<Leg> requestLeg(Waypoint from, Waypoint to) {
@@ -280,12 +285,17 @@ public class TmapClient {
     private record Leg(List<List<Double>> path, int distanceMeters, int timeSeconds) {
     }
 
+    /** 지점 둘을 잇는 한 구간의 거리·도보시간. 경로선 좌표는 빼고 숫자만 내보낸다. */
+    public record RouteLeg(int distanceMeters, int timeSeconds) {
+    }
+
     /**
      * 전체 경로.
      *
+     * @param legs 지점 사이 구간들. waypoints가 n개면 항상 n-1개다
      * @param apiCalls 이번 코스에 나간 티맵 호출 수. 무료 요금제 한도를 가늠하는 값이다
      */
-    public record WalkRoute(List<List<Double>> path, int distanceMeters,
-                            int timeSeconds, int apiCalls) {
+    public record WalkRoute(List<List<Double>> path, List<RouteLeg> legs,
+                            int distanceMeters, int timeSeconds, int apiCalls) {
     }
 }

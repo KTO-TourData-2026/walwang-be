@@ -10,6 +10,11 @@ public record NearbyPlaceResponse(
         String title,
         /** park / festival / attraction */
         String type,
+        /**
+         * 공사의 addr1(기본주소) + addr2(상세주소)를 한 줄로 합친 것.
+         * 둘 다 비어 있으면 null이다 — 주소가 없는 항목이 섞여 있다.
+         */
+        String address,
         double lat,
         double lng,
         /** 없을 수 있다. 공사 데이터에 사진이 안 붙은 항목이 많다. */

@@ -24,6 +24,11 @@ public record CourseResponse(
         int totalDistance,
         int totalDuration,
         List<List<Double>> walkPath,
+        /**
+         * 지점 사이 구간별 거리·도보시간. stores 인덱스를 따라 (0,1), (1,2), ... 순으로,
+         * 지점이 n개면 n-1개다. 티맵을 못 받으면 walkPath와 함께 비어 있다.
+         */
+        List<CourseLegResponse> legs,
         String description,
         /** 조건에 맞는 곳이 부족해 기준을 낮췄는지. 화면에서 안내 문구를 띄우는 데 쓴다. */
         boolean relaxed,
