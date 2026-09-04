@@ -35,10 +35,6 @@ public interface StoreRepository extends JpaRepository<Store, UUID> {
     /** 가게명 부분 일치 검색. */
     List<Store> findByNameContainingIgnoreCase(String keyword);
 
-    /** 이름만 뽑아온다. 외부 데이터와 대조할 때 전체를 메모리로 올리기 위한 것이다. */
-    @Query("SELECT s.name FROM Store s")
-    List<String> findAllNames();
-
     /**
      * 좌표 반경 안의 가게를 가까운 순으로. 거리(미터)를 함께 돌려준다.
      *
