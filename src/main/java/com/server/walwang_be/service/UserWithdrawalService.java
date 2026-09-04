@@ -76,6 +76,10 @@ public class UserWithdrawalService {
             affectedStores.add(review.getStore());
         }
 
+        // 도장 파일 주소는 여권 행이 사라지기 전에 챙긴다. 리뷰 사진과 같은 이유다 —
+        // 행이 없어지면 어떤 파일을 올렸는지 알 방법이 없다.
+        List<String> stampUrls = passportRepository.findStoredStampUrlsByUser(userId);
+
         // 여권이 리뷰를 참조하므로 리뷰보다 먼저 지운다.
         passportRepository.deleteByUser_UserId(userId);
         // 이 사람이 낸 신고와, 이 사람의 리뷰를 향해 남이 낸 신고를 모두 걷어낸다 —
@@ -108,6 +112,7 @@ public class UserWithdrawalService {
                 tokenBlacklistRepository.blacklist(accessToken, jwtProvider.getExpiresAt(accessToken));
             }
             photoUrls.forEach(storageClient::deleteByPublicUrlQuietly);
+            stampUrls.forEach(storageClient::deleteByPublicUrlQuietly);
         });
 
         // 리뷰가 통째로 빠지면 그 가게의 설명도 달라진다. 리뷰 삭제와 같은 이유로 갱신을 알린다.

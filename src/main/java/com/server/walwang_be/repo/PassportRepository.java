@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.util.List;
@@ -38,6 +39,27 @@ public interface PassportRepository extends JpaRepository<Passport, UUID> {
      * 주기적으로 다시 집어야 영영 빈 도장으로 남지 않는다.
      */
     List<Passport> findTop20ByStatusAndCreatedAtBefore(StampStatus status, Instant before);
+
+    /**
+     * 스토리지에서 지워야 할 도장 파일 주소. 여권 행을 지우기 전에 챙겨 둔다 —
+     * 행이 사라지면 어떤 파일을 올렸는지 알 방법이 없다.
+     *
+     * READY만 고른다. 실루엣을 실제로 올린 것은 그것뿐이고,
+     * FALLBACK은 모두가 같은 정적 파일을 가리켜 지우면 남의 여권까지 깨진다.
+     * PENDING은 아직 올린 파일이 없다.
+     */
+    @Query("""
+            select p.stampUrl from Passport p
+            where p.review.reviewId = :reviewId and p.status = com.server.walwang_be.entity.StampStatus.READY
+            """)
+    List<String> findStoredStampUrlsByReview(UUID reviewId);
+
+    /** 탈퇴한 사람의 도장 파일 전부. 고르는 기준은 위와 같다. */
+    @Query("""
+            select p.stampUrl from Passport p
+            where p.user.userId = :userId and p.status = com.server.walwang_be.entity.StampStatus.READY
+            """)
+    List<String> findStoredStampUrlsByUser(UUID userId);
 
     /** 리뷰가 지워지면 도장도 함께 사라진다. */
     void deleteByReview_ReviewId(UUID reviewId);

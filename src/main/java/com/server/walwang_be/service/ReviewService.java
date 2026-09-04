@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -200,6 +201,8 @@ public class ReviewService {
         // 엔티티가 사라진 뒤에는 못 읽으므로 URL과 인증 여부를 미리 빼둔다.
         String photoUrl = review.getPhotoUrl();
         String thumbnailUrl = review.getThumbnailUrl();
+        // 도장 파일도 같은 이유로 먼저 챙긴다. 여권 행이 지워지면 주소를 잃는다.
+        List<String> stampUrls = passportRepository.findStoredStampUrlsByReview(reviewId);
         boolean counted = review.isVerified();
 
         // 여권과 신고가 리뷰를 참조하므로 먼저 지운다.
@@ -217,18 +220,21 @@ public class ReviewService {
             // 리뷰가 빠져도 가게 설명이 달라진다. 등록 때와 같은 이유로 갱신을 알린다.
             afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
         }
-        deletePhotosAfterCommit(photoUrl, thumbnailUrl);
+        List<String> files = new ArrayList<>(stampUrls);
+        files.add(photoUrl);
+        files.add(thumbnailUrl);
+        deleteFilesAfterCommit(files);
     }
 
     /**
-     * 사진 삭제는 커밋이 끝난 뒤에 한다.
+     * 파일 삭제는 커밋이 끝난 뒤에 한다.
      *
      * 트랜잭션 안에서 지워버리면, 이후 커밋이 실패해 롤백됐을 때
      * 리뷰는 살아있는데 사진만 사라진 상태가 된다 — 화면에 깨진 이미지가 남는다.
      * 반대로 커밋 후 삭제가 실패하면 고아 파일이 남을 뿐이라 화면은 멀쩡하다.
      */
-    private void deletePhotosAfterCommit(String... publicUrls) {
-        afterCommit(() -> deletePhotos(publicUrls));
+    private void deleteFilesAfterCommit(List<String> publicUrls) {
+        afterCommit(() -> deleteFiles(publicUrls));
     }
 
     /** 롤백되면 되돌릴 수 없는 일(파일 삭제, 외부 호출)은 커밋 확정 후에 한다. */
@@ -245,7 +251,8 @@ public class ReviewService {
         });
     }
 
-    private void deletePhotos(String... publicUrls) {
+    /** 빈 자리는 넘긴다 — 사진 없는 리뷰나 폴백 도장이라 지울 파일이 없는 경우다. */
+    private void deleteFiles(List<String> publicUrls) {
         for (String publicUrl : publicUrls) {
             storageClient.deleteByPublicUrlQuietly(publicUrl);
         }
