@@ -6,6 +6,8 @@ import com.server.walwang_be.dto.ReviewCreateResponse;
 import com.server.walwang_be.dto.ReviewReportRequest;
 import com.server.walwang_be.service.ReviewReportService;
 import com.server.walwang_be.service.ReviewService;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Encoding;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -44,8 +46,19 @@ public class ReviewController {
      *
      * demo=true면 영수증 인증을 건너뛴다. 대신 그 리뷰는 verified=false로 남아
      * 작성자 본인에게만 보이고 점수·임베딩에는 들어가지 않는다. 도장은 정상적으로 찍힌다.
+     *
+     * @Encoding 은 문서에만 쓰이고 서버 동작에는 영향이 없다. 이게 없으면 springdoc 이
+     * 만든 문서에 data 파트의 Content-Type 이 비어 나가고, Swagger UI 가 그 파트를
+     * JSON 으로 보내지 않아 415가 난다 — 스펙상 기본값이 application/json 이라도
+     * UI 가 그렇게 채워 주지는 않는다. curl 처럼 파트 타입을 직접 붙이는 쪽은 원래 잘 됐다.
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            content = @Content(
+                    mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                    encoding = @Encoding(
+                            name = "data",
+                            contentType = MediaType.APPLICATION_JSON_VALUE)))
     public ResponseEntity<ReviewCreateResponse> create(
             @AuthenticationPrincipal UUID userId,
             @RequestPart("data") @Valid ReviewCreateRequest data,
