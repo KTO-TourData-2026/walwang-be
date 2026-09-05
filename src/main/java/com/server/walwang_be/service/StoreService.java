@@ -20,6 +20,7 @@ import com.server.walwang_be.repo.StoreTagCountRepository;
 import com.server.walwang_be.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +38,13 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class StoreService {
 
+    /**
+     * 검색 결과 상한.
+     *
+     * "스토어" 같은 흔한 낱말은 수천 건이 걸려 응답이 감당이 안 된다.
+     * 화면이 한 번에 보여줄 수 있는 양을 넘어서면 나머지는 쓰이지 않으므로 잘라 보낸다.
+     */
+    private static final int SEARCH_LIMIT = 50;
     /** 상세 화면에 띄울 리뷰 사진 개수. */
     private static final int THUMBNAIL_LIMIT = 5;
     /** 매칭 판정에 쓸 후보 반경. 공사 지점 반경(300m)의 두 배다. */
@@ -66,12 +74,27 @@ public class StoreService {
      *
      * 시연 모드에서 가명이 없는 가게는 결과에서 빠진다. 실명이 검색으로 새어 나가지
      * 않는다는 뜻이기도 하지만, 그만큼 가명이 채워져 있어야 검색이 제 몫을 한다.
+     *
+     * 최대 SEARCH_LIMIT 건까지만 준다. 어느 50건이 잘릴지가 요청마다 달라지면 곤란하므로
+     * 매칭에 쓴 이름으로 정렬해 자른다 — 순서가 정해져 있어야 결과가 재현된다.
+     *
+     * 이름 뒤에 storeId 를 덧붙이는 이유는 같은 이름을 쓰는 가게가 실제로 있기 때문이다.
+     * 이름만으로 정렬하면 동점인 행들의 순서를 DB가 그때그때 정해서, 경계에 걸린 가게가
+     * 어떤 요청에서는 나오고 어떤 요청에서는 빠진다. storeId 까지 봐야 순서가 하나로 정해진다.
      */
     public List<StoreCardResponse> search(String keyword, boolean demo) {
+        Sort order = demo ? searchOrder("displayName") : searchOrder("name");
         List<Store> stores = demo
-                ? storeRepository.findByDisplayNameContainingIgnoreCase(keyword)
-                : storeRepository.findByNameContainingIgnoreCase(keyword);
+                ? storeRepository.findByDisplayNameContainingIgnoreCase(
+                        keyword, PageRequest.of(0, SEARCH_LIMIT, order))
+                : storeRepository.findByNameContainingIgnoreCase(
+                        keyword, PageRequest.of(0, SEARCH_LIMIT, order));
         return toCards(stores, null, demo);
+    }
+
+    /** 검색 정렬 순서. 이름이 같을 때를 storeId 로 갈라 순서를 하나로 정한다. */
+    static Sort searchOrder(String nameProperty) {
+        return Sort.by(nameProperty).and(Sort.by("storeId"));
     }
 
     /**

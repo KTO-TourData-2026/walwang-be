@@ -1,6 +1,7 @@
 package com.server.walwang_be.repo;
 
 import com.server.walwang_be.entity.Store;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,8 +33,12 @@ public interface StoreRepository extends JpaRepository<Store, UUID> {
                                  @Param("lng") double lng,
                                  @Param("radius") int radius);
 
-    /** 실제 상호 부분 일치 검색. 실제 모드에서 쓴다. */
-    List<Store> findByNameContainingIgnoreCase(String keyword);
+    /**
+     * 실제 상호 부분 일치 검색. 실제 모드에서 쓴다.
+     *
+     * 흔한 낱말은 수천 건이 걸리므로 호출부가 Pageable 로 상한과 정렬을 정한다.
+     */
+    List<Store> findByNameContainingIgnoreCase(String keyword, Pageable pageable);
 
     /**
      * 가명 부분 일치 검색. 시연 모드에서 쓴다.
@@ -42,7 +47,7 @@ public interface StoreRepository extends JpaRepository<Store, UUID> {
      * display_name 이 비어 있는 가게는 LIKE 비교가 NULL 이라 결과에서 빠진다 —
      * 시연 대상 가게에 가명이 채워져 있어야 정상 동작한다.
      */
-    List<Store> findByDisplayNameContainingIgnoreCase(String keyword);
+    List<Store> findByDisplayNameContainingIgnoreCase(String keyword, Pageable pageable);
 
     /**
      * 좌표 반경 안의 가게를 가까운 순으로. 거리(미터)를 함께 돌려준다.
