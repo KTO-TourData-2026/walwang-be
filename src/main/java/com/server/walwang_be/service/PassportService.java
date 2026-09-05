@@ -10,9 +10,7 @@ import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.User;
 import com.server.walwang_be.repo.PassportRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +22,11 @@ import java.util.UUID;
 /**
  * 여권 도장.
  *
- * 도장 생성은 리뷰 등록과 분리한다 — 세그멘테이션이 수십 초 걸릴 수 있어서
- * 그 시간만큼 사용자를 기다리게 할 수 없다. 리뷰는 바로 저장되고,
- * 도장은 PENDING 상태로 남았다가 뒤에서 채워진다.
+ * 도장 생성은 리뷰 등록 트랜잭션 안에서 동기로 끝낸다 — 프론트가 캐싱 때문에
+ * 등록 응답에서 최종 stampUrl을 바로 받아야 하기 때문이다. 그 대신 세그멘테이션
+ * 타임아웃을 8초(ai.stamp-timeout)로 끊어 사용자가 기다리는 시간을 묶어 둔다.
+ * 8초 안에 못 받으면 FALLBACK으로 확정하고 리뷰는 그대로 저장된다.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PassportService {
@@ -90,30 +88,16 @@ public class PassportService {
     }
 
     /**
-     * 실제 도장 생성. 반드시 리뷰 트랜잭션이 커밋된 뒤에 불러야 한다 —
-     * 다른 스레드에서 도므로 커밋 전에는 여권 행이 보이지 않는다.
-     */
-    @Async("stampExecutor")
-    public void generateStampAsync(UUID passportId) {
-        try {
-            // 다른 빈을 거쳐야 @Transactional이 걸린다. 같은 빈에서 부르면
-            // 프록시를 지나지 않아 상태 변경이 저장되지 않는다.
-            stampGenerator.generate(passportId);
-        } catch (Exception e) {
-            // 여기서 예외가 새어 나가도 받아줄 곳이 없다. PENDING으로 남겨두면
-            // 재시도 스케줄러가 나중에 다시 집어간다.
-            log.warn("발도장 생성 실패 (재시도 대기): passportId={} / {}", passportId, e.toString());
-        }
-    }
-
-
-    /**
-     * 유실된 작업을 다시 집는다.
+     * 실제 도장 생성. 부르는 쪽의 트랜잭션 안에서 그대로 돈다.
      *
-     * 서버가 내려가거나 큐가 넘치면 비동기 작업은 그대로 사라진다.
-     * 이 스케줄러가 없으면 그 여권은 영영 빈 도장으로 남는다.
+     * 다른 빈(StampGenerator)을 거쳐야 @Transactional이 걸린다. 같은 빈에서 부르면
+     * 프록시를 지나지 않아 상태 변경이 저장되지 않는다.
+     *
+     * try/catch로 감싸지 않는다 — 감싸도 소용이 없기 때문이다. 참여 중인 트랜잭션이
+     * rollback-only로 찍히면 여기서 잡아도 커밋이 터진다. 그래서 예외를 삼키는 책임은
+     * StampGenerator.generate 안쪽에 있고, 이 메서드는 예외를 보지 않는다.
      */
-
-
-    /** 업로드해 둔 사진을 다시 받아온다. 공개 URL이라 인증이 필요 없다. */
+    public StampGenerator.StampResult generateStampNow(UUID passportId) {
+        return stampGenerator.generate(passportId);
+    }
 }

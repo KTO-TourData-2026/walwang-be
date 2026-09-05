@@ -10,6 +10,7 @@ import com.server.walwang_be.dto.ReviewCreateResponse;
 import com.server.walwang_be.dto.SizeStatusResponse;
 import com.server.walwang_be.dto.StoreStatusSummary;
 import com.server.walwang_be.entity.BlindStatus;
+import com.server.walwang_be.entity.Passport;
 import com.server.walwang_be.entity.Review;
 import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.StoreSizeStatus;
@@ -165,14 +166,17 @@ public class ReviewService {
         // 도장은 동반 가능했던 방문에만 찍는다 — 거절당한 기록은 여권에 남기지 않는다.
         // 시연 리뷰에도 그대로 찍는다. 도장 생성이 시연에서 보여줄 것 중 하나이고,
         // 여권은 리뷰의 is_demo를 물려받아 시연 쪽에만 남는다.
-        UUID passportId = request.dogAllowed()
-                ? passportService.createFor(user, store, review).getPassportId()
+        Passport passport = request.dogAllowed()
+                ? passportService.createFor(user, store, review)
                 : null;
-        if (passportId != null) {
-            // 세그멘테이션은 오래 걸려 여기서 기다리지 않는다.
-            // 다른 스레드에서 도므로 커밋이 끝난 뒤에 넘겨야 여권 행이 보인다.
-            afterCommit(() -> passportService.generateStampAsync(passportId));
-        }
+
+        // 세그멘테이션을 여기서 기다린다. 프론트가 캐싱 때문에 등록 응답에서
+        // 최종 stampUrl을 받아야 해서, 커밋 뒤 비동기로 채우던 걸 안으로 들였다.
+        // ai.stamp-timeout(기본 8초)에서 끊기고, 못 받으면 FALLBACK으로 확정된다.
+        // 예외는 올라오지 않는다 — AI가 죽어도 리뷰 등록은 성공해야 한다.
+        StampGenerator.StampResult stamp = passport == null
+                ? null
+                : passportService.generateStampNow(passport.getPassportId());
 
         // 리뷰가 하나 붙으면 그 가게의 설명이 달라진다. AI가 벡터를 다시 계산하도록
         // 알려만 둔다 — 실패해도 리뷰 등록은 그대로 성공이다.
@@ -184,8 +188,10 @@ public class ReviewService {
 
         return new ReviewCreateResponse(
                 review.getReviewId(),
-                // 실제 도장은 여권에서 확인한다. 여기서는 항상 기본 발도장이 나간다.
-                PawStampClient.DEFAULT_STAMP_URL,
+                // 확정된 최종 주소가 그대로 나간다. 도장을 찍지 않은 리뷰(동반 불가)는
+                // 화면이 비지 않도록 기본 발도장 자리만 채워 보낸다.
+                stamp == null ? PawStampClient.DEFAULT_STAMP_URL : stamp.stampUrl(),
+                stamp == null ? null : stamp.status(),
                 // 방금 쓴 리뷰가 속한 축의 상태를 돌려준다. 다른 축을 보여주면
                 // 화면이 방금 한 일과 무관한 등급을 그린다.
                 summarize(store, demo));

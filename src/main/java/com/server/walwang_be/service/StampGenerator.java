@@ -33,38 +33,58 @@ public class StampGenerator {
     private final SupabaseStorageClient storageClient;
 
     /**
-     * 도장을 만들어 여권에 붙인다.
+     * 도장을 만들어 여권에 붙이고, 확정된 상태를 돌려준다.
      *
-     * 실루엣을 못 딴 것(FALLBACK)과 물어보지 못한 것(장애)을 구분한다 —
-     * 앞엣것은 여기서 확정하고, 뒤엣것은 예외로 올려 PENDING으로 남긴다.
-     * 그래야 재시도가 같은 답을 반복해서 받지 않는다.
+     * 리뷰 등록 트랜잭션 안에서 동기로 돈다. 그래서 이 메서드는 예외를 밖으로 내보내지 않는다 —
+     * 참여 중인 트랜잭션에서 RuntimeException이 새어 나가면 그 트랜잭션이 rollback-only로 찍히고,
+     * 부르는 쪽이 잡아도 커밋이 UnexpectedRollbackException으로 터져 리뷰까지 통째로 사라진다.
+     * 도장 하나 때문에 리뷰를 잃을 수는 없다.
+     *
+     * 그래서 세 가지를 한 자리에 모은다 — 실루엣을 못 딴 것(정상 응답), 물어보지 못한 것(장애·타임아웃),
+     * 만든 걸 못 올린 것(스토리지 실패). 밖에서는 셋 다 FALLBACK이고, 구분은 로그로만 남는다.
      */
     @Transactional
-    public void generate(UUID passportId) {
+    public StampResult generate(UUID passportId) {
         Passport passport = passportRepository.findWithReviewByPassportId(passportId)
                 .orElse(null);
-        if (passport == null || passport.getStatus() != StampStatus.PENDING) {
-            // 리뷰가 지워졌거나 이미 처리된 건이다.
-            return;
+        if (passport == null) {
+            // 리뷰가 지워졌다. 붙일 자리가 없으니 기본값만 돌려준다.
+            return new StampResult(StampStatus.FALLBACK, PawStampClient.DEFAULT_STAMP_URL);
+        }
+        if (passport.getStatus() != StampStatus.PENDING) {
+            // 사진이 없어 만들 때 이미 확정됐거나, 재시도가 겹쳐 다른 쪽이 먼저 끝냈다.
+            return result(passport);
         }
 
         String photoUrl = passport.getReview().getPhotoUrl();
         if (photoUrl == null || photoUrl.isBlank()) {
             passport.applyFallback(PawStampClient.DEFAULT_STAMP_URL);
-            return;
+            return result(passport);
         }
 
-        Optional<byte[]> stamp = pawStampClient.createStamp(download(photoUrl));
-        if (stamp.isEmpty()) {
-            // AI가 실루엣을 못 땄다. 장애가 아니라 정상 응답이므로 여기서 확정한다.
+        try {
+            Optional<byte[]> stamp = pawStampClient.createStamp(download(photoUrl));
+            if (stamp.isEmpty()) {
+                // AI가 실루엣을 못 땄다. 장애가 아니라 정상 응답이다.
+                passport.applyFallback(PawStampClient.DEFAULT_STAMP_URL);
+                return result(passport);
+            }
+            // userId는 UUID다. %d로 찍으면 IllegalFormatConversionException이 난다.
+            String path = "stamps/%s/%s.png".formatted(
+                    passport.getUser().getUserId(), UUID.randomUUID());
+            passport.applyStamp(storageClient.upload(path, stamp.get(), MediaType.IMAGE_PNG));
+        } catch (RuntimeException e) {
+            // 타임아웃(ai.stamp-timeout), AI 장애, 스토리지 실패가 모두 여기로 온다.
+            // 예외 종류만 남긴다 — 메시지에 사진 URL이 섞여 나가는 걸 막는다.
+            log.warn("발도장 생성 실패, 기본 발도장으로 확정합니다: passportId={} / {}",
+                    passportId, e.getClass().getSimpleName());
             passport.applyFallback(PawStampClient.DEFAULT_STAMP_URL);
-            return;
         }
+        return result(passport);
+    }
 
-        // userId는 UUID다. %d로 찍으면 IllegalFormatConversionException이 난다.
-        String path = "stamps/%s/%s.png".formatted(
-                passport.getUser().getUserId(), UUID.randomUUID());
-        passport.applyStamp(storageClient.upload(path, stamp.get(), MediaType.IMAGE_PNG));
+    private StampResult result(Passport passport) {
+        return new StampResult(passport.getStatus(), passport.getStampUrl());
     }
 
     private byte[] download(String photoUrl) {
@@ -74,8 +94,13 @@ public class StampGenerator {
                 .body(byte[].class);
 
         if (photo == null || photo.length == 0) {
-            throw new IllegalStateException("사진을 내려받지 못했습니다: " + photoUrl);
+            // URL은 남기지 않는다. 리뷰 사진의 위치라 로그로 흘릴 값이 아니다.
+            throw new IllegalStateException("사진을 내려받지 못했습니다.");
         }
         return photo;
+    }
+
+    /** 확정된 도장. 리뷰 등록 응답이 이 값을 그대로 내보낸다. */
+    public record StampResult(StampStatus status, String stampUrl) {
     }
 }

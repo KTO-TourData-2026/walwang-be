@@ -14,11 +14,14 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 유실된 도장 작업을 다시 집는다.
+ * PENDING으로 남은 도장을 다시 집는다.
  *
- * PassportService 안에 두면 @Async가 걸린 메서드를 같은 빈에서 부르게 되어
- * 프록시를 거치지 않는다 — 재시도가 스케줄러 스레드에서 동기로 돌아,
- * 한 건이 느리면 다음 주기까지 밀린다. 빈을 나눠 그 경로를 없앤다.
+ * 도장 생성이 리뷰 등록 트랜잭션 안으로 들어오면서 이 스케줄러의 역할이 바뀌었다.
+ * 이제 새 리뷰는 PENDING으로 커밋되지 않는다 — 같은 트랜잭션 안에서 READY나
+ * FALLBACK으로 확정되고, 중간에 서버가 죽으면 여권 행까지 통째로 롤백된다.
+ *
+ * 그래서 이건 비동기 시절에 PENDING으로 남은 기존 행을 치우는 뒷정리용이다.
+ * 그런 행이 DB에서 사라지고 나면 지워도 된다.
  */
 @Slf4j
 @Component
@@ -40,7 +43,8 @@ public class StampRetryScheduler {
             return;
         }
         log.info("발도장 재시도: PENDING {}건", stuck.size());
-        // 다른 빈을 거치므로 @Async가 실제로 걸린다.
-        stuck.forEach(passport -> passportService.generateStampAsync(passport.getPassportId()));
+        // 스케줄러 스레드에서 순서대로 돈다. 한 건당 최대 8초(ai.stamp-timeout)라
+        // 20건을 다 실패해도 160초, fixedDelay 5분 안에 끝난다.
+        stuck.forEach(passport -> passportService.generateStampNow(passport.getPassportId()));
     }
 }
