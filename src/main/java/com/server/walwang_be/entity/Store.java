@@ -35,6 +35,20 @@ public class Store {
     /** WGS84. geography 컬럼 정의와 반드시 같아야 한다. */
     public static final int SRID = 4326;
 
+    /**
+     * 시연 모드에서 가명이 없을 때 내보낼 이름.
+     *
+     * 실제 상호로 떨어지지 않게 하려고 둔다. 자세히는 displayName(boolean) 참고.
+     */
+    public static final String MASKED_NAME = "비공개 가게";
+
+    /**
+     * 시연 모드에서 마스킹 주소가 없을 때 내보낼 값.
+     *
+     * 실제 주소로 떨어지지 않게 하려고 둔다. 자세히는 displayAddress(boolean) 참고.
+     */
+    public static final String MASKED_ADDRESS = "주소 비공개";
+
     private static final GeometryFactory GEOMETRY_FACTORY =
             new GeometryFactory(new PrecisionModel(), SRID);
 
@@ -65,6 +79,14 @@ public class Store {
     /** 표시용 주소. 좌표와 별개로 화면에 그대로 보여준다. */
     @Column(nullable = false, length = 255)
     private String address;
+
+    /**
+     * 시연용 주소. 상세 번지를 뭉갠 값이다("서울특별시 성동구 연무장길 일대").
+     * 목 리뷰가 붙은 채로 번지까지 나가면 그 평판이 실제 가게에 그대로 붙는다.
+     * 내부 매칭은 언제나 address 를 쓴다.
+     */
+    @Column(name = "display_address", length = 300)
+    private String displayAddress;
 
     @Column(nullable = false, length = 50)
     private String type;
@@ -101,9 +123,38 @@ public class Store {
         return GEOMETRY_FACTORY.createPoint(new Coordinate(lng, lat));
     }
 
-    /** 화면에 내보낼 이름. 시연 모드에서 가명이 있으면 그것을, 아니면 실제 상호를 쓴다. */
+    /**
+     * 화면에 내보낼 이름.
+     *
+     * 시연 모드에서 가명이 비어 있으면 실제 상호가 아니라 MASKED_NAME 을 준다.
+     * 예전에는 실명으로 떨어졌는데, 그러면 가명을 넣지 않은 가게가 하나 생기는 순간
+     * 그 가게만 조용히 실명으로 나간다 — 전 건을 채워 둔 동안에는 티가 나지 않다가
+     * 가게가 추가될 때 터지는 종류라, 폴백 자체를 없앴다.
+     *
+     * 대조·검색은 이 값을 쓰지 않는다. 영수증 대조는 name 으로 하고(가명으로 맞춰보면
+     * 무엇도 통과하지 못한다), 시연 검색은 display_name 컬럼을 직접 본다.
+     */
     public String displayName(boolean demo) {
-        return (demo && displayName != null && !displayName.isBlank()) ? displayName : name;
+        if (!demo) {
+            return name;
+        }
+        return (displayName != null && !displayName.isBlank()) ? displayName : MASKED_NAME;
+    }
+
+    /**
+     * 화면에 내보낼 주소.
+     *
+     * 시연 모드에서 마스킹 주소가 비어 있으면 실제 주소가 아니라 MASKED_ADDRESS 를 준다.
+     * displayName 과 같은 규칙이다 — 채우다 만 가게가 생겨도 번지가 새는 일은 없고,
+     * 대신 "주소 비공개"가 눈에 띄어 빠진 곳을 알아챌 수 있다.
+     */
+    public String displayAddress(boolean demo) {
+        if (!demo) {
+            return address;
+        }
+        return (displayAddress != null && !displayAddress.isBlank())
+                ? displayAddress
+                : MASKED_ADDRESS;
     }
 
     public double getLat() {

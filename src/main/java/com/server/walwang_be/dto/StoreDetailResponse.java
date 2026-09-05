@@ -10,6 +10,8 @@ import java.util.UUID;
 /**
  * 가게 상세. 리뷰 본문은 빠지고, 대신 리뷰에서 뽑은 썸네일과
  * 많이 선택된 태그가 함께 나간다.
+ *
+ * name·address 모두 demo가 정한 값이다. 필드 이름은 그대로 두고 값만 갈린다.
  */
 public record StoreDetailResponse(
         UUID storeId,
@@ -51,7 +53,7 @@ public record StoreDetailResponse(
                 store.getStoreId(),
                 store.displayName(demo),
                 new GeoPoint(store.getLat(), store.getLng()),
-                store.getAddress(),
+                store.displayAddress(demo),
                 store.getType(),
                 tags,
                 store.getOpenTime(),

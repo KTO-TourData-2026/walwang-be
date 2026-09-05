@@ -14,6 +14,9 @@ import java.util.UUID;
  * storeName·displayName 모두 demo가 정한 이름이다. 시연 중에는 실명이 응답에
  * 아예 실리지 않는다 — 프론트가 어느 필드를 읽든 가명이 나가야 하기 때문이다.
  * (실명을 함께 내려 디버깅에 쓰던 방식은 노출 위험이 커서 그만뒀다.)
+ *
+ * address도 demo가 정한다. 필드 이름은 그대로 두고 값만 갈린다 —
+ * 시연 중에는 상세 번지가 실리지 않는다.
  */
 public record StoreCardResponse(
         UUID storeId,
@@ -31,7 +34,7 @@ public record StoreCardResponse(
                 store.getStoreId(),
                 name,
                 new GeoPoint(store.getLat(), store.getLng()),
-                store.getAddress(),
+                store.displayAddress(demo),
                 store.getType(),
                 sizeStatus,
                 name);
