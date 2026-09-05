@@ -26,8 +26,8 @@ CREATE INDEX IF NOT EXISTS idx_passports_user_demo_created
 --   SELECT is_demo, count(*) FROM passports GROUP BY is_demo;
 --   -> 기존 도장은 전부 is_demo = false 여야 한다
 --
---   목 리뷰(is_demo = true)에는 여권이 없다. 의도된 것이고 백필하지 않는다.
---   아래는 0 이 나오는 게 정상이다.
+--   목 리뷰(is_demo = true)에는 여권이 없다. 이 파일만 돌린 시점에는 0 이 정상이다.
+--   그 도장은 backfill-passport-demo.sql 이 따로 채운다.
 --   SELECT count(*) FROM passports p
 --     JOIN reviews r ON r.review_id = p.review_id
 --    WHERE r.is_demo = true;

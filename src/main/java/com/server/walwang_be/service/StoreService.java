@@ -57,10 +57,21 @@ public class StoreService {
         return toCards(storeRepository.findWithinRadius(lat, lng, radius), size, demo);
     }
 
-    /** 가게명 부분 일치 검색. */
+    /**
+     * 가게명 부분 일치 검색.
+     *
+     * 매칭 기준을 화면에 나가는 이름에 맞춘다 — 시연 모드는 가명, 실제 모드는 실제 상호로 찾는다.
+     * 예전에는 언제나 실제 상호로 찾았는데, 시연 중에는 화면에 가명이 보이는 탓에
+     * 검색어와 결과가 어긋났다(가명을 쳐도 안 나오고, 실명을 쳐야 나왔다).
+     *
+     * 시연 모드에서 가명이 없는 가게는 결과에서 빠진다. 실명이 검색으로 새어 나가지
+     * 않는다는 뜻이기도 하지만, 그만큼 가명이 채워져 있어야 검색이 제 몫을 한다.
+     */
     public List<StoreCardResponse> search(String keyword, boolean demo) {
-        // 검색은 언제나 실제 상호로 한다. 가명은 응답에만 쓴다.
-        return toCards(storeRepository.findByNameContainingIgnoreCase(keyword), null, demo);
+        List<Store> stores = demo
+                ? storeRepository.findByDisplayNameContainingIgnoreCase(keyword)
+                : storeRepository.findByNameContainingIgnoreCase(keyword);
+        return toCards(stores, null, demo);
     }
 
     /**
