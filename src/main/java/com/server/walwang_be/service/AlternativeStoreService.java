@@ -71,7 +71,7 @@ public class AlternativeStoreService {
         // 매칭은 넓은 후보와 견줘야 정확하다. 같은 업종만 넣고 돌리면
         // 진짜 주인이 빠진 채 엉뚱한 가게가 공사 항목에 붙는다.
         Set<UUID> verified = tourVerifier.verifiedAmong(nearby);
-        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(sameCategory, size);
+        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(sameCategory, size, demo);
 
         List<Store> candidates = sameCategory.stream()
                 .filter(store -> storeCandidates.hasEvidence(store, verified, statusByStore))
@@ -84,6 +84,6 @@ public class AlternativeStoreService {
                 storeId, base.getType(), RADIUS_METERS, sameCategory.size(), candidates.size());
 
         return storeCandidates.toResponses(
-                candidates, statusByStore, storeCandidates.tags(candidates), demo);
+                candidates, statusByStore, storeCandidates.tags(candidates, demo), demo);
     }
 }

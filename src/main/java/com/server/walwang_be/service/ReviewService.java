@@ -156,9 +156,10 @@ public class ReviewService {
                 .build());
 
         reviewRepository.flush();
-        // 시연 리뷰는 점수를 움직이지 않는다. 인증을 거치지 않았으므로 집계에서 빠진다.
+        // 시연 리뷰는 어느 축의 점수도 움직이지 않는다 — 인증을 거치지 않아
+        // 시연 쪽 집계에서도 빠진다. 시연 쪽 행은 목 리뷰로만 채워진다.
         if (!demo) {
-            recompute(store);
+            recompute(store, demo);
         }
 
         // 도장은 동반 가능했던 방문에만 찍는다 — 거절당한 기록은 여권에 남기지 않는다.
@@ -185,7 +186,9 @@ public class ReviewService {
                 review.getReviewId(),
                 // 실제 도장은 여권에서 확인한다. 여기서는 항상 기본 발도장이 나간다.
                 PawStampClient.DEFAULT_STAMP_URL,
-                summarize(store));
+                // 방금 쓴 리뷰가 속한 축의 상태를 돌려준다. 다른 축을 보여주면
+                // 화면이 방금 한 일과 무관한 등급을 그린다.
+                summarize(store, demo));
     }
 
     /** 내 리뷰 삭제. 남의 리뷰는 존재를 알려주지 않고 403으로 끊는다. */
@@ -204,6 +207,8 @@ public class ReviewService {
         // 도장 파일도 같은 이유로 먼저 챙긴다. 여권 행이 지워지면 주소를 잃는다.
         List<String> stampUrls = passportRepository.findStoredStampUrlsByReview(reviewId);
         boolean counted = review.isVerified();
+        // 지운 리뷰가 속한 축을 다시 센다. 반대쪽 축은 이 리뷰를 세지 않았으므로 그대로 둔다.
+        boolean countedOnDemoAxis = review.isDemo();
 
         // 여권과 신고가 리뷰를 참조하므로 먼저 지운다.
         // 다녀온 증거가 사라지면 도장도 남지 않고, 사라진 리뷰를 향한 신고도 의미가 없다.
@@ -216,7 +221,7 @@ public class ReviewService {
         // 애초에 세지도, 임베딩에 넣지도 않은 리뷰라면 빠져도 달라지는 게 없다.
         // 등록 때 부르지 않았으니 삭제 때도 부르지 않는다.
         if (counted) {
-            recompute(store);
+            recompute(store, countedOnDemoAxis);
             // 리뷰가 빠져도 가게 설명이 달라진다. 등록 때와 같은 이유로 갱신을 알린다.
             afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
         }
@@ -311,7 +316,7 @@ public class ReviewService {
                 .size();
 
         List<RecomputeResultResponse.SizeResult> sizes =
-                storeSizeStatusRepository.findByStore_StoreId(storeId).stream()
+                storeSizeStatusRepository.findByStore_StoreIdAndDemo(storeId, demo).stream()
                         .sorted(Comparator.comparing(StoreSizeStatus::getSize))
                         .map(RecomputeResultResponse.SizeResult::from)
                         .toList();
@@ -326,21 +331,13 @@ public class ReviewService {
     /**
      * 가게의 리뷰를 전부 다시 세어 점수·건수·태그를 갈아끼운다.
      *
-     * ⚠ store_size_status는 (가게, 크기)당 한 행뿐이라 시연용과 실제용을 함께 담지 못한다.
-     * demo=true로 부르면 목 리뷰로 계산한 값이 실제 리뷰로 계산한 값을 덮어쓴다.
-     * 지금은 실제 리뷰가 없어 문제가 없지만, 실제 리뷰가 쌓이기 시작하면
-     * store_size_status에 is_demo를 두고 행을 나눠야 한다.
-     *
      * 등록·삭제 양쪽에서 같은 함수를 부르는 게 핵심이다.
      * 더하고 빼는 방식이면 시간가중 점수가 원래대로 돌아오지 않아 오차가 쌓인다.
-     */
-    public void recompute(Store store) {
-        // 리뷰 등록·삭제에서 부르는 길. 실제 리뷰만 센다.
-        recompute(store, false);
-    }
-
-    /**
-     * @param demo true면 시연용 목 리뷰(is_demo=true)로 집계한다
+     *
+     * 축 없는 오버로드는 두지 않는다 — 어느 쪽을 갱신하는지는 부르는 쪽이
+     * 언제나 알고 있고, 기본값을 두면 잘못된 축을 조용히 덮어쓰게 된다.
+     *
+     * @param demo true면 시연용 목 리뷰(is_demo=true)로 집계해 시연 쪽 행에 쓴다
      */
     public void recompute(Store store, boolean demo) {
         // demo가 정한 쪽 리뷰만 센다. 가려진 리뷰는 어느 쪽이든 뺀다 —
@@ -351,11 +348,8 @@ public class ReviewService {
                 store.getStoreId(), demo, BlindStatus.NORMAL);
         Instant now = Instant.now();
 
-        int totalPossible = 0;
-        int totalImpossible = 0;
-        Instant storeLastVerified = null;
-
-        for (StoreSizeStatus status : storeSizeStatusRepository.findByStore_StoreId(store.getStoreId())) {
+        for (StoreSizeStatus status
+                : storeSizeStatusRepository.findByStore_StoreIdAndDemo(store.getStoreId(), demo)) {
             double possibleScore = 0;
             double impossibleScore = 0;
             int possibleCount = 0;
@@ -381,19 +375,12 @@ public class ReviewService {
 
             status.applyRecomputed(possibleScore, impossibleScore,
                     possibleCount, impossibleCount, lastVerified);
-
-            totalPossible += possibleCount;
-            totalImpossible += impossibleCount;
-            if (lastVerified != null && (storeLastVerified == null || lastVerified.isAfter(storeLastVerified))) {
-                storeLastVerified = lastVerified;
-            }
         }
 
-        store.applyRecomputed(totalPossible, totalImpossible, storeLastVerified);
-        recomputeTags(store, reviews);
+        recomputeTags(store, reviews, demo);
     }
 
-    private void recomputeTags(Store store, List<Review> reviews) {
+    private void recomputeTags(Store store, List<Review> reviews, boolean demo) {
         Map<StoreTag, Integer> counts = new EnumMap<>(StoreTag.class);
         for (Review review : reviews) {
             for (StoreTag tag : review.getTags()) {
@@ -402,7 +389,7 @@ public class ReviewService {
         }
 
         Map<StoreTag, StoreTagCount> existing = new EnumMap<>(StoreTag.class);
-        storeTagCountRepository.findByStore_StoreIdOrderByCountDesc(store.getStoreId())
+        storeTagCountRepository.findByStore_StoreIdAndDemoOrderByCountDesc(store.getStoreId(), demo)
                 .forEach(row -> existing.put(row.getTag(), row));
 
         counts.forEach((tag, count) -> {
@@ -411,6 +398,7 @@ public class ReviewService {
                 row = storeTagCountRepository.save(StoreTagCount.builder()
                         .store(store)
                         .tag(tag)
+                        .demo(demo)
                         .build());
             }
             row.applyRecomputed(count);
@@ -427,9 +415,9 @@ public class ReviewService {
         return Math.pow(0.5, days / HALF_LIFE_DAYS);
     }
 
-    private StoreStatusSummary summarize(Store store) {
+    private StoreStatusSummary summarize(Store store, boolean demo) {
         List<SizeStatusResponse> sizeStatus =
-                storeSizeStatusRepository.findByStore_StoreId(store.getStoreId()).stream()
+                storeSizeStatusRepository.findByStore_StoreIdAndDemo(store.getStoreId(), demo).stream()
                         .sorted(Comparator.comparing(StoreSizeStatus::getSize))
                         .map(SizeStatusResponse::from)
                         .toList();

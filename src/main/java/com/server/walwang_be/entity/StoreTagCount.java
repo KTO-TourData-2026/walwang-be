@@ -39,14 +39,23 @@ public class StoreTagCount {
     @Column(nullable = false, length = 30)
     private StoreTag tag;
 
+    /**
+     * 시연 집계인지. 목 리뷰로 센 값과 실제 리뷰로 센 값을 따로 담는다.
+     * store_size_status와 같은 축이다 — 한 행만 두면 시연 재집계가 실제 태그를 덮어쓴다.
+     */
+    @Id
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
+
     /** 이 태그가 선택된 리뷰 수. 상세 조회에서 많이 선택된 순으로 정렬한다. */
     @Column(name = "count", nullable = false)
     private int count;
 
     @Builder
-    private StoreTagCount(Store store, StoreTag tag) {
+    private StoreTagCount(Store store, StoreTag tag, boolean demo) {
         this.store = store;
         this.tag = tag;
+        this.demo = demo;
     }
 
     /** 리뷰를 다시 집계한 개수로 갈아끼운다. */

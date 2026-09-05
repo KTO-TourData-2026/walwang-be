@@ -33,9 +33,17 @@ public record StoreDetailResponse(
          */
         boolean petVerified
 ) {
+    /**
+     * 가게 전체 건수는 크기별 행을 합쳐 만든다 — 같은 수를 stores에 따로 저장해 두면
+     * 시연/실제 축까지 더해져 한 숫자를 네 곳에서 맞춰야 한다.
+     * 크기별 행은 이미 이 응답에 실려 있으므로 더 읽어올 것도 없다.
+     *
+     * @param lastVerifiedAt 크기별 행 중 가장 최근 값. 합이 아니라 최댓값이라 따로 받는다
+     */
     public static StoreDetailResponse of(Store store,
                                          List<String> tags,
                                          List<SizeStatusResponse> sizeStatus,
+                                         Instant lastVerifiedAt,
                                          List<String> thumbnailUrls,
                                          boolean demo,
                                          boolean petVerified) {
@@ -48,9 +56,9 @@ public record StoreDetailResponse(
                 tags,
                 store.getOpenTime(),
                 store.getCloseTime(),
-                store.getPossibleCount(),
-                store.getImpossibleCount(),
-                store.getLastVerifiedAt(),
+                sizeStatus.stream().mapToInt(SizeStatusResponse::possibleCount).sum(),
+                sizeStatus.stream().mapToInt(SizeStatusResponse::impossibleCount).sum(),
+                lastVerifiedAt,
                 sizeStatus,
                 thumbnailUrls,
                 petVerified);

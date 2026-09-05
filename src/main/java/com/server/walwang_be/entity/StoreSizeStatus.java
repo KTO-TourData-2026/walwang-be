@@ -23,8 +23,8 @@ import java.time.Instant;
  * 등급(status) 컬럼은 두지 않는다. 점수만 저장하고 조회 시 계산하는데,
  * 그래야 임계값을 바꿨을 때 저장된 데이터를 손대지 않고 곧바로 반영된다.
  *
- * 가게를 수집할 때 크기당 1행씩(총 2행) 0으로 미리 만들어 둔다.
- * 그러면 리뷰가 없는 가게도 자동으로 UNKNOWN이 나온다.
+ * 가게를 수집할 때 크기 × 시연여부당 1행씩(총 4행) 0으로 미리 만들어 둔다.
+ * 그러면 리뷰가 없는 가게도 어느 모드에서든 자동으로 UNKNOWN이 나온다.
  */
 @Entity
 @Table(name = "store_size_status")
@@ -42,6 +42,16 @@ public class StoreSizeStatus {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private DogSize size;
+
+    /**
+     * 시연 집계인지. 목 리뷰로 센 값과 실제 리뷰로 센 값을 따로 담는다.
+     *
+     * 키에 들어가므로 (가게, 크기)당 두 행이 된다. 한 행만 두면 시연 집계가
+     * 실제 집계를 덮어써서, 시연 모드를 껐을 때 목 리뷰로 계산된 등급이 남는다.
+     */
+    @Id
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
 
     /** 시간가중 합. 오래된 리뷰일수록 적게 반영한다. */
     @Column(name = "possible_score", nullable = false)
@@ -66,9 +76,10 @@ public class StoreSizeStatus {
     private Instant updatedAt;
 
     @Builder
-    private StoreSizeStatus(Store store, DogSize size) {
+    private StoreSizeStatus(Store store, DogSize size, boolean demo) {
         this.store = store;
         this.size = size;
+        this.demo = demo;
         this.updatedAt = Instant.now();
     }
 

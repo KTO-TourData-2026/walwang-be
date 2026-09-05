@@ -23,10 +23,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -71,15 +73,23 @@ public class StoreService {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
-        List<String> tags = storeTagCountRepository.findByStore_StoreIdOrderByCountDesc(storeId).stream()
+        List<String> tags = storeTagCountRepository
+                .findByStore_StoreIdAndDemoOrderByCountDesc(storeId, demo).stream()
                 // 한 번도 선택되지 않은 태그는 붙은 적 없는 것과 같으므로 내보내지 않는다.
                 .filter(tagCount -> tagCount.getCount() > 0)
                 .map(StoreTagCount::getTag)
                 .map(StoreTag::label)
                 .toList();
 
-        List<SizeStatusResponse> sizeStatus =
-                toSizeStatus(storeSizeStatusRepository.findByStore_StoreId(storeId), null);
+        List<StoreSizeStatus> statuses = storeSizeStatusRepository
+                .findByStore_StoreIdAndDemo(storeId, demo);
+        List<SizeStatusResponse> sizeStatus = toSizeStatus(statuses, null);
+        // 가게 전체의 "마지막 확인" 은 크기별 값 중 가장 최근 것이다.
+        Instant lastVerifiedAt = statuses.stream()
+                .map(StoreSizeStatus::getLastVerifiedAt)
+                .filter(Objects::nonNull)
+                .max(Instant::compareTo)
+                .orElse(null);
 
         List<String> thumbnailUrls = reviewRepository
                 .findVisibleByStore(storeId, demo, BlindStatus.NORMAL, viewerId,
@@ -87,7 +97,7 @@ public class StoreService {
                 .map(Review::getThumbnailUrl)
                 .getContent();
 
-        return StoreDetailResponse.of(store, tags, sizeStatus, thumbnailUrls, demo,
+        return StoreDetailResponse.of(store, tags, sizeStatus, lastVerifiedAt, thumbnailUrls, demo,
                 petVerified(store));
     }
 
@@ -150,11 +160,13 @@ public class StoreService {
 
     /**
      * 저장 해제. 저장돼 있지 않아도 성공으로 본다(저장과 같은 이유).
-     * 축을 가리지 않고 지운다 — 다른 모드에 남아 있으면 푼 것으로 보이지 않는다.
+     *
+     * demo가 정한 쪽만 지운다. 저장이 축을 갈라 담으므로 해제도 같은 축이어야 한다 —
+     * 축을 빼고 지우면 시연 중에 누른 해제가 실제로 저장해 둔 가게까지 날린다.
      */
     @Transactional
-    public void unsaveStore(UUID userId, UUID storeId) {
-        savedStoreRepository.deleteByUser_UserIdAndStore_StoreId(userId, storeId);
+    public void unsaveStore(UUID userId, UUID storeId, boolean demo) {
+        savedStoreRepository.deleteByUser_UserIdAndStore_StoreIdAndDemo(userId, storeId, demo);
     }
 
     /** 내가 저장한 가게 목록. 최근에 저장한 것부터. demo가 정한 쪽만 나간다. */
@@ -179,7 +191,7 @@ public class StoreService {
         List<UUID> storeIds = stores.stream().map(Store::getStoreId).toList();
 
         Map<UUID, List<StoreSizeStatus>> statusByStore =
-                storeSizeStatusRepository.findByStore_StoreIdIn(storeIds).stream()
+                storeSizeStatusRepository.findByStore_StoreIdInAndDemo(storeIds, demo).stream()
                         // LAZY 프록시라도 FK인 store_id는 초기화 없이 읽힌다.
                         .collect(Collectors.groupingBy(status -> status.getStore().getStoreId()));
 

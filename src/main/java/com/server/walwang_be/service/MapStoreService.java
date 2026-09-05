@@ -63,7 +63,7 @@ public class MapStoreService {
                 .toList();
 
         // 크기별 상태는 StoreService가 한 번에 읽어 붙인다(N+1 방지).
-        return storeService.toCards(excludeImpossible(inView, size), size, demo);
+        return storeService.toCards(excludeImpossible(inView, size, demo), size, demo);
     }
 
     /**
@@ -72,12 +72,12 @@ public class MapStoreService {
      * UNKNOWN은 남긴다 — 아직 아무도 안 가본 곳이라는 뜻이지 못 간다는 뜻이 아니다.
      * 그래서 리뷰가 쌓이기 전에는 아무것도 걸러지지 않는 것이 정상이다.
      */
-    private List<Store> excludeImpossible(List<Store> stores, DogSize size) {
+    private List<Store> excludeImpossible(List<Store> stores, DogSize size, boolean demo) {
         if (size == null || stores.isEmpty()) {
             return stores;
         }
         Map<UUID, StoreSizeStatus> statusByStore = storeSizeStatusRepository
-                .findByStore_StoreIdIn(stores.stream().map(Store::getStoreId).toList()).stream()
+                .findByStore_StoreIdInAndDemo(stores.stream().map(Store::getStoreId).toList(), demo).stream()
                 .filter(status -> status.getSize() == size)
                 .collect(Collectors.toMap(
                         status -> status.getStore().getStoreId(), status -> status));

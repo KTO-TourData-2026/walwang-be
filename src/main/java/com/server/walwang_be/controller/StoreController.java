@@ -93,11 +93,12 @@ public class StoreController {
         return ResponseEntity.ok().build();
     }
 
-    /** 저장 해제. 저장돼 있지 않아도 200. 축을 가리지 않고 지운다. */
+    /** 저장 해제. 저장돼 있지 않아도 200. demo가 정한 쪽에서만 빠진다. */
     @DeleteMapping("/{storeId}/save")
     public ResponseEntity<Void> unsaveStore(@AuthenticationPrincipal UUID userId,
-                                            @PathVariable UUID storeId) {
-        storeService.unsaveStore(userId, storeId);
+                                            @PathVariable UUID storeId,
+                                            @RequestParam(defaultValue = "false") boolean demo) {
+        storeService.unsaveStore(userId, storeId, demo);
         return ResponseEntity.ok().build();
     }
     /**

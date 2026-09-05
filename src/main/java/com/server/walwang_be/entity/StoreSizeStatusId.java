@@ -19,4 +19,6 @@ public class StoreSizeStatusId implements Serializable {
 
     private UUID store;
     private DogSize size;
+    /** 시연 집계와 실제 집계가 같은 가게·크기에 각각 한 행씩 있어야 해서 키에 들어간다. */
+    private boolean demo;
 }

@@ -73,9 +73,9 @@ class CourseLegsTest {
 
     @BeforeEach
     void stubSurroundings() {
-        given(storeCandidates.statuses(any(), any())).willReturn(Map.of());
+        given(storeCandidates.statuses(any(), any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.hasEvidence(any(), any(), any())).willReturn(true);
-        given(storeCandidates.tags(any())).willReturn(Map.of());
+        given(storeCandidates.tags(any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.toResponses(any(), any(), any(), anyBoolean())).willReturn(List.of());
         given(nearbyPlaceFinder.around(any())).willReturn(List.of());
         given(placeEmbeddingRepository.existsAny(any(), anyBoolean())).willReturn(false);

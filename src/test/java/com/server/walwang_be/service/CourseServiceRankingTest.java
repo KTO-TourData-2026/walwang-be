@@ -71,9 +71,9 @@ class CourseServiceRankingTest {
 
     @BeforeEach
     void stubSurroundings() {
-        given(storeCandidates.statuses(any(), any())).willReturn(Map.of());
+        given(storeCandidates.statuses(any(), any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.hasEvidence(any(), any(), any())).willReturn(true);
-        given(storeCandidates.tags(any())).willReturn(Map.of());
+        given(storeCandidates.tags(any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.toResponses(any(), any(), any(), anyBoolean())).willReturn(List.of());
         given(nearbyPlaceFinder.around(any())).willReturn(List.of());
         // 티맵 없이 간다. 경로선만 비고 코스 자체는 그대로 나온다.

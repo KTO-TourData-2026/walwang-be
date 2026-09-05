@@ -76,15 +76,10 @@ public class Store {
     @Column(name = "close_time")
     private LocalTime closeTime;
 
-    @Column(name = "possible_count", nullable = false)
-    private int possibleCount;
-
-    @Column(name = "impossible_count", nullable = false)
-    private int impossibleCount;
-
-    /** 마지막 리뷰 시각. 리뷰가 0건이면 값이 없다. */
-    @Column(name = "last_verified_at")
-    private Instant lastVerifiedAt;
+    // possible_count / impossible_count / last_verified_at 은 여기 두지 않는다.
+    // store_size_status 를 크기별로 합치면 그대로 나오는 값이라, 따로 저장하면
+    // 같은 수를 두 곳에 두게 되고 시연/실제 축이 생기면서 네 벌이 된다.
+    // 상세 응답에서 크기별 행을 합쳐 만든다.
 
     @Builder
     private Store(String externalId, String name, double lat, double lng, String address,
@@ -96,16 +91,6 @@ public class Store {
         this.type = type;
         this.openTime = openTime;
         this.closeTime = closeTime;
-    }
-
-    /**
-     * store_size_status 합계 캐시를 갱신한다.
-     * 상세 조회에서 매번 집계하지 않으려고 두는 값이라, 리뷰가 반영될 때 함께 움직여야 한다.
-     */
-    public void applyRecomputed(int possibleCount, int impossibleCount, Instant lastVerifiedAt) {
-        this.possibleCount = possibleCount;
-        this.impossibleCount = impossibleCount;
-        this.lastVerifiedAt = lastVerifiedAt;
     }
 
     /**

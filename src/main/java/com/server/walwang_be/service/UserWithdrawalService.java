@@ -96,7 +96,12 @@ public class UserWithdrawalService {
         // 재집계가 지워진 리뷰를 다시 세지 않도록 먼저 DB에 반영한다.
         reviewRepository.flush();
 
-        affectedStores.forEach(reviewService::recompute);
+        // 두 축을 모두 다시 센다. 이 사람의 리뷰가 어느 쪽에 걸려 있었는지 행마다 다르고,
+        // 탈퇴는 자주 일어나지 않아 한 번 더 세는 비용이 문제가 되지 않는다.
+        affectedStores.forEach(store -> {
+            reviewService.recompute(store, false);
+            reviewService.recompute(store, true);
+        });
         // 재집계와 대상이 같다. 다만 커밋 뒤에 불러야 해서 id만 미리 빼둔다 —
         // 그때는 엔티티가 준영속이라 새로 읽어올 수 없다.
         List<UUID> storeIdsToRefresh = affectedStores.stream().map(Store::getStoreId).toList();

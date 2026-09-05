@@ -90,9 +90,9 @@ class CourseRecommendWithMockAiTest {
         given(storeRepository.findWithinRadius(anyDouble(), anyDouble(), anyInt())).willReturn(nearby);
         given(tourVerifier.verifiedAmong(any())).willReturn(
                 nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()));
-        given(storeCandidates.statuses(any(), any())).willReturn(Map.of());
+        given(storeCandidates.statuses(any(), any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.hasEvidence(any(), any(), any())).willReturn(true);
-        given(storeCandidates.tags(any())).willReturn(Map.of());
+        given(storeCandidates.tags(any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.toResponses(any(), any(), any(), anyBoolean())).willReturn(List.of());
         given(nearbyPlaceFinder.around(any())).willReturn(List.of());
         given(tmapClient.walkRoute(any())).willReturn(Optional.empty());

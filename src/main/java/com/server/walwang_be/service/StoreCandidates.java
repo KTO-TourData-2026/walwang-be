@@ -57,24 +57,29 @@ public class StoreCandidates {
                 || availability == AvailabilityStatus.POSSIBLE;
     }
 
-    /** 요청한 크기에 해당하는 상태만 가게별로 모은다. */
-    public Map<UUID, StoreSizeStatus> statuses(List<Store> stores, DogSize dogSize) {
+    /**
+     * 요청한 크기에 해당하는 상태만 가게별로 모은다.
+     *
+     * demo가 정한 축만 읽는다 — 축을 섞으면 가게당 두 행이 들어와
+     * toMap이 키 충돌로 터지고, 안 터지더라도 어느 쪽 등급인지 알 수 없다.
+     */
+    public Map<UUID, StoreSizeStatus> statuses(List<Store> stores, DogSize dogSize, boolean demo) {
         if (stores.isEmpty()) {
             return Map.of();
         }
-        return storeSizeStatusRepository.findByStore_StoreIdIn(storeIds(stores)).stream()
+        return storeSizeStatusRepository.findByStore_StoreIdInAndDemo(storeIds(stores), demo).stream()
                 .filter(status -> status.getSize() == dogSize)
                 .collect(Collectors.toMap(
                         status -> status.getStore().getStoreId(), status -> status));
     }
 
     /** 가게별 상위 태그. 한 번에 읽어 N+1을 피한다. */
-    public Map<UUID, List<String>> tags(List<Store> stores) {
+    public Map<UUID, List<String>> tags(List<Store> stores, boolean demo) {
         if (stores.isEmpty()) {
             return Map.of();
         }
         Map<UUID, List<String>> tagsByStore = new LinkedHashMap<>();
-        storeTagCountRepository.findByStore_StoreIdIn(storeIds(stores)).stream()
+        storeTagCountRepository.findByStore_StoreIdInAndDemo(storeIds(stores), demo).stream()
                 // 한 번도 선택되지 않은 태그는 붙은 적 없는 것과 같다.
                 .filter(tagCount -> tagCount.getCount() > 0)
                 .sorted(Comparator.comparingInt(StoreTagCount::getCount).reversed())

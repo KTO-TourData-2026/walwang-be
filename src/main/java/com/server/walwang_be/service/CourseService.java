@@ -81,7 +81,7 @@ public class CourseService {
 
         // 공사 목록과 리뷰 점수, 두 갈래의 근거를 모아 후보를 고른다.
         Set<UUID> verified = tourVerifier.verifiedAmong(nearby);
-        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(nearby, request.dogSize());
+        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(nearby, request.dogSize(), demo);
 
         List<Store> pool = nearby.stream()
                 .filter(store -> storeCandidates.hasEvidence(store, verified, statusByStore))
@@ -119,7 +119,7 @@ public class CourseService {
                 walk.legs(),
                 null,
                 relaxed,
-                storeCandidates.toResponses(route, statusByStore, storeCandidates.tags(route), demo),
+                storeCandidates.toResponses(route, statusByStore, storeCandidates.tags(route, demo), demo),
                 nearbyPlaceFinder.around(route));
     }
 
@@ -165,7 +165,7 @@ public class CourseService {
         List<Store> stores = course.getStores().stream()
                 .map(SavedCourseStore::getStore)
                 .toList();
-        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(stores, course.getDogSize());
+        Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(stores, course.getDogSize(), demo);
 
         // 경로·거리·시간은 저장하지 않으므로 조회할 때마다 다시 얻는다.
         Walk walk = walk(stores);
@@ -183,7 +183,7 @@ public class CourseService {
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
-                storeCandidates.toResponses(stores, statusByStore, storeCandidates.tags(stores), demo),
+                storeCandidates.toResponses(stores, statusByStore, storeCandidates.tags(stores, demo), demo),
                 nearbyPlaceFinder.around(stores));
     }
 
