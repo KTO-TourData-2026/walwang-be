@@ -1,0 +1,86 @@
+/* 관리자 페이지. CSP가 인라인 스타일을 막으므로 모든 스타일은 여기 둔다. */
+:root {
+  --fg: #1f2328;
+  --muted: #59636e;
+  --line: #d1d9e0;
+  --bg: #ffffff;
+  --soft: #f6f8fa;
+  --accent: #0969da;
+  --danger-bg: #ffebe9;
+  --danger-fg: #82071e;
+  --info-bg: #ddf4ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 16px 48px;
+  font: 14px/1.5 -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+a { color: var(--accent); }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12px; }
+h1 { font-size: 22px; margin: 20px 0 12px; }
+h2 { font-size: 17px; margin: 28px 0 8px; }
+h3 { font-size: 14px; margin: 16px 0 6px; }
+small { color: var(--muted); font-weight: normal; }
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-size: 15px; }
+.links { display: flex; gap: 16px; }
+.who { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.who form { margin: 0; }
+
+.notice {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.meta { color: var(--muted); margin: 6px 0; }
+.alert { padding: 8px 12px; border-radius: 6px; background: var(--danger-bg); color: var(--danger-fg); }
+.info { padding: 8px 12px; border-radius: 6px; background: var(--info-bg); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.filters input { min-width: 0; flex: 1 1 200px; max-width: 320px; }
+
+input, button {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+button { background: var(--soft); cursor: pointer; }
+.link-button { border: 0; background: none; color: var(--accent); padding: 0; }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+table.compact { width: auto; min-width: 240px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: var(--soft); font-weight: 600; white-space: nowrap; }
+.num { text-align: right; }
+.nowrap { white-space: nowrap; }
+.empty { color: var(--muted); text-align: center; }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 8px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; word-break: break-all; }
+
+.pager { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 12px 0; }
+
+.login { max-width: 360px; margin: 48px auto; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.stack label { display: flex; flex-direction: column; gap: 4px; }

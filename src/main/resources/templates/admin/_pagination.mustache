@@ -1,0 +1,7 @@
+{{#pagination}}
+<nav class="pager">
+  {{#hasPrev}}<a href="{{prevUrl}}">← 이전</a>{{/hasPrev}}
+  <span>{{page}} / {{totalPages}} 페이지 · 전체 {{totalElements}}건</span>
+  {{#hasNext}}<a href="{{nextUrl}}">다음 →</a>{{/hasNext}}
+</nav>
+{{/pagination}}

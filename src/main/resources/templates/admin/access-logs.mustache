@@ -1,0 +1,36 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <h1>접속기록</h1>
+  <form method="get" action="/admin/access-logs" class="filters">
+    <input name="operator" value="{{operatorFilter}}" placeholder="계정" maxlength="50">
+    <input name="targetUserId" value="{{targetUserIdFilter}}" placeholder="정보주체(회원 ID)" maxlength="36">
+    <button type="submit">거르기</button>
+    <a href="/admin/access-logs">초기화</a>
+  </form>
+  <p class="meta">최신순. 일시는 한국 시간입니다. 이 화면을 연 것도 기록됩니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>일시</th><th>계정</th><th>접속지(IP)</th><th>수행업무</th><th>정보주체</th><th>상세</th></tr>
+      </thead>
+      <tbody>
+        {{#logs}}
+        <tr>
+          <td class="nowrap">{{accessedAt}}</td>
+          <td>{{operator}}</td>
+          <td><code>{{ip}}</code></td>
+          <td title="{{action}}">{{actionLabel}}</td>
+          <td>{{#hasTarget}}<a href="/admin/access-logs?targetUserId={{targetUserId}}"><code>{{targetUserId}}</code></a>{{/hasTarget}}</td>
+          <td>{{detail}}</td>
+        </tr>
+        {{/logs}}
+        {{^logs}}
+        <tr><td colspan="6" class="empty">기록이 없습니다.</td></tr>
+        {{/logs}}
+      </tbody>
+    </table>
+  </div>
+  {{> admin/_pagination}}
+</main>
+{{> admin/_foot}}

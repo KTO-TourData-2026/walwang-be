@@ -1,0 +1,53 @@
+# /etc/supabase-audit/config 로 복사해서 쓴다.
+# 비밀정보는 여기 두지 않는다 — 토큰은 TOKEN_FILE 이 가리키는 별도 파일에만 있다.
+
+# 운영 프로젝트 ref 하나만 적는다.
+# Supabase 대시보드 > 운영 프로젝트 > Settings > General > Reference ID
+# 개발 프로젝트 ref 를 여기 적으면 개발 로그가 섞인다. 반드시 확인하고 적어라.
+PROJECT_REF="여기에_운영_프로젝트_ref"
+
+TOKEN_FILE="/etc/supabase-audit/token"
+ARCHIVE_DIR="/var/log/supabase-audit"
+RETENTION_DAYS=365
+
+# ---------------------------------------------------------------------------
+# 엔드포인트
+#
+#   legacy     /analytics/endpoints/logs.all  + BigQuery SQL
+#              2026-09-23 에 제거된다.
+#   clickhouse /analytics/endpoints/logs      + ClickHouse SQL
+#
+# 전환 절차는 docs/supabase-audit-log-retention.md 의 "엔드포인트 전환" 절을 보라.
+# 바꾸기 전에 반드시 --probe 와 --check-sources 를 돌려 볼 것.
+# ---------------------------------------------------------------------------
+API_MODE="legacy"
+
+# ---------------------------------------------------------------------------
+# 수집할 로그 소스 (공백 구분)
+#
+# 프로젝트마다 존재하는 소스가 다르다. 없는 소스를 적으면 매일 exit 2 로 죽는다.
+#   sudo /usr/local/bin/supabase-audit-archive --check-sources
+# 를 돌려서 나온 줄을 그대로 붙여 넣어라.
+#
+# 제8조 접속기록 관점의 우선순위:
+#   edge_logs      API 게이트웨이. 모든 REST 요청 — 접속일시/접속지 IP/경로.  필수
+#   postgres_logs  DB 쿼리와 접속. 대시보드 SQL Editor 실행도 여기 남는다.   필수
+#   auth_logs      로그인/JWT/OAuth.                                          필수
+#   storage_logs   파일 업로드·조회. 여권 이미지 접근이 여기 남는다.          필수
+#   auth_audit_logs  Auth 감사 이벤트. 프로젝트에 따라 없을 수 있다.          권장
+#   postgrest_logs / realtime_logs / function_edge_logs / function_logs /
+#   supavisor_logs / pgbouncer_logs / pg_upgrade_logs                         선택
+# ---------------------------------------------------------------------------
+LOG_SOURCES="edge_logs postgres_logs auth_logs storage_logs"
+
+# Supabase 무료 플랜의 로그 보존 시간(롤링). 이 시간을 넘긴 구간은 이미 삭제돼 있다.
+# 이 값은 "받을 수 없는 구간"을 조회 실패와 구분해 기록하는 데만 쓴다.
+SOURCE_RETENTION_HOURS=24
+
+# 하루를 몇 시간 단위로 끊어 조회할지. 응답이 1000행에서 잘리므로
+# 로그량이 많아 페이지가 깊어지면 1 이하로 줄인다.
+CHUNK_HOURS=1
+
+# analytics 엔드포인트는 rate limit 이 빡빡하다. 429 가 잦으면 늘린다.
+# 소스 수 × 24 구간 × 페이지 수만큼 요청이 나가므로 소스를 늘릴수록 총 시간이 늘어난다.
+REQUEST_INTERVAL=1

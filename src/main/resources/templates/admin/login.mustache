@@ -1,0 +1,22 @@
+{{> admin/_head}}
+<main class="login">
+  <h1>왈왕 관리자 로그인</h1>
+  {{#error}}<p class="alert">로그인할 수 없습니다. 입력값을 확인하거나 잠시 후 다시 시도하세요.</p>{{/error}}
+  {{#loggedOut}}<p class="info">로그아웃했습니다.</p>{{/loggedOut}}
+  {{#expired}}<p class="info">다른 곳에서 같은 계정으로 로그인해 이 세션이 끊겼습니다.</p>{{/expired}}
+  <form method="post" action="/admin/login" class="stack">
+    <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+    <label>아이디
+      <input name="username" autocomplete="username" maxlength="50" required>
+    </label>
+    <label>비밀번호
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <label>OTP 6자리
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+    </label>
+    <button type="submit">로그인</button>
+  </form>
+  <p class="meta">서버가 인식한 접속 IP: <code>{{clientIp}}</code></p>
+</main>
+{{> admin/_foot}}

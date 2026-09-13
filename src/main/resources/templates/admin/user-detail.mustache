@@ -1,0 +1,75 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <p><a href="/admin/users">← 회원 목록</a></p>
+  {{#user}}
+  <h1>{{nickname}}</h1>
+  <dl class="facts">
+    <dt>회원 ID</dt><dd><code>{{userId}}</code></dd>
+    <dt>이메일</dt><dd>{{email}}</dd>
+    <dt>가입일</dt><dd>{{joinedAt}}</dd>
+  </dl>
+  <p><a href="/admin/access-logs?targetUserId={{userId}}">이 회원의 정보를 조회한 기록 보기</a></p>
+
+  <section>
+    <h2>리뷰 <small>{{reviewTotal}}건</small></h2>
+    <div class="table-wrap">
+      <table class="compact">
+        <tbody>
+          {{#reviewStats}}<tr><td>{{label}}</td><td class="num">{{count}}</td></tr>{{/reviewStats}}
+          {{^reviewStats}}<tr><td class="empty">리뷰가 없습니다.</td></tr>{{/reviewStats}}
+        </tbody>
+      </table>
+    </div>
+    <h3>최근 리뷰 <small>최대 10건</small></h3>
+    <p class="meta">리뷰 본문과 사진은 표시하지 않습니다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>작성일</th><th>가게</th><th>크기</th><th>동반</th><th>노출 상태</th><th>구분</th></tr></thead>
+        <tbody>
+          {{#recentReviews}}
+          <tr>
+            <td class="nowrap">{{createdAt}}</td>
+            <td>{{storeName}}</td>
+            <td>{{dogSize}}</td>
+            <td>{{dogAllowed}}</td>
+            <td>{{status}}</td>
+            <td>{{kind}}</td>
+          </tr>
+          {{/recentReviews}}
+          {{^recentReviews}}<tr><td colspan="6" class="empty">리뷰가 없습니다.</td></tr>{{/recentReviews}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>저장 <small>가게 {{savedStoreCount}}곳 · 코스 {{savedCourseCount}}개</small></h2>
+    <h3>최근 저장 코스 <small>최대 10개</small></h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>저장일</th><th>제목</th><th>구분</th></tr></thead>
+        <tbody>
+          {{#recentCourses}}
+          <tr><td class="nowrap">{{createdAt}}</td><td>{{title}}</td><td>{{kind}}</td></tr>
+          {{/recentCourses}}
+          {{^recentCourses}}<tr><td colspan="3" class="empty">저장한 코스가 없습니다.</td></tr>{{/recentCourses}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>도장 <small>{{stampTotal}}장</small></h2>
+    <div class="table-wrap">
+      <table class="compact">
+        <tbody>
+          {{#stampStats}}<tr><td>{{label}}</td><td class="num">{{count}}</td></tr>{{/stampStats}}
+          {{^stampStats}}<tr><td class="empty">도장이 없습니다.</td></tr>{{/stampStats}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{/user}}
+</main>
+{{> admin/_foot}}

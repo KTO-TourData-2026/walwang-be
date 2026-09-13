@@ -3,6 +3,7 @@ package com.server.walwang_be.config;
 import com.server.walwang_be.security.JwtAuthenticationEntryPoint;
 import com.server.walwang_be.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,6 +25,25 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * JwtAuthenticationFilter가 서블릿 필터로 한 번 더 등록되지 않게 막는다.
+     *
+     * @Component인 필터는 스프링 부트가 보안 체인과 별개로 모든 요청에 거는 서블릿 필터로도 등록한다.
+     * 앱 API에서는 OncePerRequestFilter가 두 번째 실행을 건너뛰어 티가 안 났지만,
+     * JWT 필터가 없는 관리자 체인에서는 체인이 끝난 "뒤에" 이 필터가 돌아
+     * Bearer 헤더의 회원으로 SecurityContext를 덮어쓴다. 그러면 접속기록의 operator가
+     * 관리자가 아니라 그 회원으로 바뀔 수 있다. 이 필터는 아래 체인 안에서만 돈다.
+     *
+     * AdminJwtIsolationTest가 이 동작을 고정한다.
+     */
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration() {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration =
+                new FilterRegistrationBean<>(jwtAuthenticationFilter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

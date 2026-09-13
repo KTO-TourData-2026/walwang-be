@@ -1,0 +1,34 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <h1>회원 목록</h1>
+  <form method="get" action="/admin/users" class="filters">
+    <input name="q" value="{{query}}" placeholder="이메일 또는 닉네임 일부" maxlength="100">
+    <button type="submit">검색</button>
+    <a href="/admin/users">초기화</a>
+  </form>
+  <p class="meta">목록의 이메일은 가려져 있습니다. 전체 이메일은 상세 화면에서만 보이며, 상세 조회는 대상 회원과 함께 기록됩니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>이메일</th><th>닉네임</th><th>가입일</th><th class="num">리뷰 수</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{#users}}
+        <tr>
+          <td>{{maskedEmail}}</td>
+          <td>{{nickname}}</td>
+          <td class="nowrap">{{joinedAt}}</td>
+          <td class="num">{{reviewCount}}</td>
+          <td><a href="/admin/users/{{userId}}">상세</a></td>
+        </tr>
+        {{/users}}
+        {{^users}}
+        <tr><td colspan="5" class="empty">조건에 맞는 회원이 없습니다.</td></tr>
+        {{/users}}
+      </tbody>
+    </table>
+  </div>
+  {{> admin/_pagination}}
+</main>
+{{> admin/_foot}}

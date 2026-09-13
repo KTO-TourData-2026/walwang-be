@@ -90,6 +90,11 @@ Access Token은 `Authorization: Bearer ...` 헤더, Refresh Token은 본문 `{re
 앱에서는 401을 받으면 `/user/reissue`로 재발급 후 원래 요청을 재시도하는
 인터셉터를 두면 사용자가 만료를 인지하지 못한다.
 
+## 관리자 페이지
+
+`/admin` — 회원 조회와 접속기록 열람(서버 렌더링, 조회 전용). IP 허용목록 + 비밀번호 + OTP로 들어가고,
+모든 회원 정보 조회가 `access_log`에 남는다. 설치·운영 규칙·설계 근거는 `docs/admin-access-log.md`.
+
 ## 약관
 
 `entity/TermCode.java`의 enum이 약관 종류와 현재 버전을 관리한다.

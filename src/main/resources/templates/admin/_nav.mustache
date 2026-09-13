@@ -1,0 +1,15 @@
+<header class="topbar">
+  <strong class="brand">왈왕 관리자</strong>
+  <nav class="links">
+    <a href="/admin/users">회원</a>
+    <a href="/admin/access-logs">접속기록</a>
+  </nav>
+  <div class="who">
+    <span>{{operator}}</span>
+    <form method="post" action="/admin/logout">
+      <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+      <button type="submit" class="link-button">로그아웃</button>
+    </form>
+  </div>
+</header>
+<p class="notice">이 화면의 모든 조회는 계정·시각·IP·대상 회원과 함께 접속기록에 남습니다. 업무 목적 외에는 조회하지 마세요.</p>
