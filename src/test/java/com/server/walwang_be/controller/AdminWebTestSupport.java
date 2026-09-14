@@ -10,6 +10,7 @@ import com.server.walwang_be.security.JwtAuthenticationEntryPoint;
 import com.server.walwang_be.security.JwtProvider;
 import com.server.walwang_be.security.TotpVerifier;
 import com.server.walwang_be.service.AccessLogService;
+import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,6 +84,8 @@ abstract class AdminWebTestSupport {
     AccessLogService accessLogService;
     @MockitoBean
     AdminUserService adminUserService;
+    @MockitoBean
+    AdminTerminationService adminTerminationService;
     @MockitoBean
     AdminLoginAttemptRepository loginAttempts;
     @MockitoBean

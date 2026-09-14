@@ -24,9 +24,11 @@
 | 회원 목록·검색 | `GET /admin/users?q=` | `LIST_USERS` / `SEARCH_USERS` (검색어 포함) |
 | 회원 상세 | `GET /admin/users/{userId}` | `VIEW_USER` + 대상 회원 |
 | 접속기록 열람 | `GET /admin/access-logs` | `VIEW_ACCESS_LOG` (+ 대상 회원으로 걸렀으면 그 회원) |
+| 이용계약 해지 | `POST /admin/users/{userId}/terminate` | `TERMINATE_USER` + 대상 회원 (사유 포함) |
 | 로그아웃 | `POST /admin/logout` | `LOGOUT` |
 
-조회 전용이다. 수정·삭제 기능은 없다.
+**쓰기 기능은 이용계약 해지 하나뿐이다.** 그 외에는 조회만 있고, 회원 정보를 고치는 화면은 없다.
+해지는 되돌릴 수 없고 접속기록 순서도 조회와 다르므로 규칙을 따로 뒀다 — 아래 "10. 이용계약 해지" 참고.
 
 ---
 
@@ -52,6 +54,9 @@
 6. **Supabase 대시보드 멤버는 최소 인원으로 둔다.** 각자 개인 계정, 2단계 인증.
 7. **월 1회 접속기록을 점검하고, 점검했다는 사실을 남긴다**(제8조). 아래 "월 1회 점검".
 8. **업무 목적이 있을 때만 조회한다.** 문의 대응, 신고 처리 등. 화면 상단에도 같은 안내가 나온다.
+9. **이용계약 해지는 관리자 페이지로만 한다.** 대시보드에서 `users` 행을 직접 지우지 않는다 —
+   그 경로는 기록이 남지 않고, 참조하는 행들 때문에 FK 에 걸려 실패하거나 반쯤 지워진 상태를 만든다.
+   해지 전에 판단 근거(위반한 약관 조항, 신고·문의 번호)를 작업 대장에 남긴다. 사유 입력란에도 같은 내용을 적는다.
 
 ---
 
@@ -205,6 +210,74 @@ IP 주소 등으로 접속 권한을 제한하도록 한다.
   스프링의 `ForwardedHeaderFilter`는 왼쪽 끝을 쓰기 때문이다(`native`는 괜찮다).
 - **nginx 앞에 ALB나 Cloudflare를 더 두면** 오른쪽 끝이 그쪽 주소가 되어 아무도 못 들어온다.
   열리는 쪽이 아니라 닫히는 쪽으로 틀리지만, 그때는 `ClientIpResolver`를 고쳐야 한다.
+
+### 10. 이용계약 해지 — 유일한 쓰기 기능
+
+**요구.** 약관 14조 5항은 회원이 12조를 위반해 이용계약이 해지된 경우 재가입 제한을 위해
+이메일 해시를 30일 보관하도록 한다. 코드에는 `WithdrawalReason.TERMINATED`와 `withdrawn_email`,
+차단 로직(`WithdrawnEmailService.blocked`)이 모두 있었지만 **TERMINATED를 만드는 경로가 없어**
+조항이 집행 불가 상태였다. 자진 탈퇴(`DELETE /users/me`)는 사유를 받지 않고 항상 `SELF`다.
+
+**무엇이 일어나는가.** `AdminTerminationService` → `UserWithdrawalService.withdraw(..., TERMINATED)`.
+자진 탈퇴와 같은 경로를 쓴다 — 지우는 대상이 같고, 탈퇴에 이미 있는 재집계·파일 정리를 다시 만들 이유가 없다.
+
+| | 자진 탈퇴 | 이용계약 해지 |
+|---|---|---|
+| 부르는 곳 | `DELETE /users/me` (본인) | `POST /admin/users/{userId}/terminate` (관리자) |
+| 사유 | `SELF` | `TERMINATED` |
+| `withdrawn_email` 행 | 만들지 않는다 | 만든다. 30일간 재가입 차단 |
+| 접속기록 | 남지 않는다(본인의 행위다) | `TERMINATE_USER` + 대상 회원 + 사유 |
+
+#### 기록을 삭제와 같은 트랜잭션에 둔 이유
+
+조회 화면은 "기록을 먼저 커밋하고 데이터를 읽는다"(3번). 지우는 작업에는 그 순서를 쓸 수 없다.
+
+| 방식 | 어긋나는 경우 |
+|---|---|
+| 기록을 먼저 커밋 (`REQUIRES_NEW`) | 삭제가 실패하면 **"해지했다"는 기록만** 남는다. 점검할 때 지워졌는지 알 수 없다 |
+| 삭제한 뒤에 기록 | 기록이 실패하면 **되돌릴 수 없는 삭제가 기록 없이** 끝난다. 제8조 위반이고 고칠 방법이 없다 |
+| 시도 행 + 결과 행 (2행) | 어긋나지는 않지만 해지 한 건에 행이 둘이고, 결과 행 기록이 실패하면 첫 번째 문제로 돌아간다 |
+| **같은 트랜잭션 (택한 것)** | 함께 커밋되거나 함께 없어진다. `삭제 O ⟺ 기록 O` |
+
+- `AccessLogService.recordInCurrentTransaction`을 쓴다. `Propagation.MANDATORY`라 트랜잭션 없이
+  부르면 예외로 끝난다 — 원자성을 잃은 채 조용히 쓰이는 것을 막는다.
+- `withdrawn_email` 행까지 같은 트랜잭션이다. 삭제·기록·재가입 차단이 한꺼번에 확정된다.
+- Supabase 파일 삭제와 Refresh Token 정리는 커밋 뒤에만 돈다. 롤백되면 파일도 그대로 남는다.
+- **대가:** 실행되지 않은 시도(확인 닉네임 불일치 등)는 기록에 남지 않는다. 그 경우 개인정보가
+  바뀌지도, 관리자가 새로 알게 되는 것도 없다 — 닉네임은 직전 `VIEW_USER`로 기록된 상세 화면에 이미 나와 있다.
+- CHECK 제약을 `ALTER`하지 않은 DB에서는 기록이 막혀 삭제도 통째로 롤백된다.
+  **회원이 지워지는 일은 없고** 오류 화면만 난다. 배포 순서를 틀렸을 때 안전한 쪽으로 실패한다.
+
+#### 실수 방지
+
+되돌릴 수 없다. 리뷰·저장·도장·여권이 지워지고 Supabase 의 사진·도장 파일까지 사라진다.
+
+1. 회원 상세 아래 `<details>`로 접어 둔 별도 영역에 있다. 화면을 열었을 때 버튼이 보이지 않는다.
+2. **닉네임을 그대로 다시 입력**해야 한다. 서버가 DB 값과 비교하고, 다르면 아무것도 하지 않고 400.
+3. 해지 사유가 필수다(1~200자). 빈 사유로는 실행되지 않는다.
+4. 무엇이 지워지는지 폼 안에 건수까지 적어 둔다.
+5. `POST` + CSRF 토큰. 세션 쿠키 `SameSite=Strict`와 CSP `form-action 'self'`가 한 겹 더 막는다.
+
+확인 대화상자(`confirm()`)는 쓸 수 없다 — CSP가 `default-src 'none'`이라 스크립트가 아예 실행되지 않는다.
+그래서 확인을 서버에서 한다. 비밀번호·OTP 재확인은 넣지 않았다: 세션 자체가 IP + 비밀번호 + OTP를
+통과한 결과이고, 여기서 막아야 하는 것은 악의가 아니라 오조작이다.
+
+#### 사유는 1년, 해시는 30일
+
+- 해지 사유(관리자가 입력한 문장)는 `access_log.detail`에만 남는다. 접속기록 보관 기간(1년)을 따르고,
+  UPDATE 금지 트리거가 걸려 있어 나중에 고칠 수 없다.
+- `withdrawn_email`에는 페퍼를 섞은 이메일 해시와 만료 시각만 남는다(30일). 이메일 원문은 어디에도 남지 않는다.
+- 그래서 30일이 지나면 **누구를 해지했는지는 접속기록의 `target_user_id`로만** 남는다.
+  `users` 행이 없어 그 id로 이메일·닉네임을 되짚을 수는 없다(2번과 같은 이유).
+
+#### 재가입이 막히는 경로
+
+`UserService.signUp`과 `isEmailTaken`이 `WithdrawnEmailService.blocked(email)`을 본다.
+차단 목록은 `WithdrawalReason.blocksSignUp()`이 참인 사유뿐이라 `SELF` 행은 차단하지 않는다.
+응답은 "현재 가입할 수 없는 이메일입니다" 하나로, 이미 쓰는 주소인지 해지된 주소인지 구분해 알려주지 않는다 —
+나누면 아무나 남의 주소를 넣어보고 해지 사실을 알아낼 수 있다.
+차단을 풀어야 하면 `withdrawn_email`에서 그 행을 지운다(`db/schema-withdrawn-email.sql` "되돌리기").
+삭제된 계정 자체는 복구할 수 없다.
 
 ---
 
@@ -457,9 +530,21 @@ sudo nginx -t && sudo systemctl reload nginx
 1. 개인정보를 읽기 **전에** `audit(...)`를 부른다. 한 명이 대상이면 `targetUserId`를 채운다.
 2. 뷰 이름을 돌려준다. `@ResponseBody`나 `ResponseEntity`를 쓰지 않는다
    (인터셉터가 막기 전에 본문이 나간다).
-3. `AccessAction`에 값을 추가하면 **`schema-access-log.sql`의 CHECK 제약도 고치고 운영·개발 두 DB에 각각 `ALTER`** 한다.
+3. `AccessAction`에 값을 추가하면 **`schema-access-log.sql`의 CHECK 제약도 고치고 운영·개발 두 DB에 각각 돌린다.**
+   파일 안의 `ALTER TABLE ... ck_access_log_action` 블록이 이미 있는 테이블의 제약도 갱신한다(몇 번 돌려도 된다).
    안 하면 그 화면은 기록이 실패해 열리지 않는다.
-4. 수정·삭제 기능을 넣으려면 이 문서의 전제(조회 전용)부터 다시 검토한다.
+
+### 개인정보를 바꾸는 기능을 추가할 때
+
+조회 화면의 규칙과 다르다. 이용계약 해지(10번)가 유일한 선례이니 그 구조를 그대로 따른다.
+
+1. **기록을 먼저 커밋하지 않는다.** `AccessLogService.recordInCurrentTransaction`으로 변경과 같은
+   트랜잭션에 담는다. `audit(...)` 헬퍼는 조회 전용이다 — 그걸 쓰면 변경이 실패해도 기록만 남는다.
+2. 컨트롤러는 기록 대신 `AccessLogEnforcementInterceptor.markRecorded(request)`만 부른다.
+3. `GET`으로 상태를 바꾸지 않는다. `POST` + CSRF 토큰. 링크를 눌러서 실행되는 일이 없어야 한다.
+4. **되돌릴 수 없는 작업이면 확인 단계를 둔다.** CSP 때문에 자바스크립트를 쓸 수 없으므로
+   서버에서 확인한다(해지는 닉네임 재입력을 요구한다).
+5. 되돌리는 방법을 문서에 적는다. 되돌릴 수 없으면 그 사실을 화면에도 적는다.
 
 ## 로컬 개발
 
@@ -481,9 +566,10 @@ ADMIN_ACCOUNTS_0_TOTP=...
 
 | 테스트 | 무엇 | DB |
 |---|---|---|
-| `AdminSecurityTest` | IP 허용목록·사칭, 로그인/실패/잠금/OTP 재사용, CSRF, 헤더 | 없음(목) |
+| `AdminSecurityTest` | IP 허용목록·사칭, 로그인/실패/잠금/OTP 재사용, CSRF(로그인·해지), 해지에 인증·허용목록이 걸리는지, 헤더 | 없음(목) |
 | `AdminJwtIsolationTest` | 관리자 세션 + 앱 JWT에서 operator 불변, JWT 필터 등록 해제 | 없음(목) |
-| `AdminControllerTest` | 화면마다 기록 → 조회 순서, 기록 실패 시 화면 차단, 마스킹·이스케이프 | 없음(목) |
+| `AdminControllerTest` | 화면마다 기록 → 조회 순서, 기록 실패 시 화면 차단, 마스킹·이스케이프, 해지 요청의 파라미터·리다이렉트·400 | 없음(목) |
+| `AdminTerminationServiceTest` | 해지: 기록 → 삭제 순서, `TERMINATED`로 부르는지, 확인 닉네임·사유 검증에서 아무것도 실행하지 않는지, 따로 커밋되는 `record(...)`를 쓰지 않는지 | 없음(목) |
 | `ClientIpResolverTest`, `TotpVerifierTest`(RFC 6238 벡터), `AdminAccountConfigTest`, `AccessLogEnforcementInterceptorTest` | 단위 | 없음 |
 | `AdminPostgresTest` | SQL 파일, CHECK, 트리거, 정리 쿼리, 조회 쿼리, `ddl-auto: update` 호환 | **로컬 컨테이너 전용** |
 
@@ -500,6 +586,11 @@ docker rm -f walwang-accesslog-verify
 ## 알려진 한계
 
 - **Supabase 대시보드 경로는 여전히 기록되지 않는다.** 운영 규칙 1·2번과 Supabase 로그 아카이브로 보완한다.
+- **해지된 회원의 액세스 토큰은 만료될 때까지 살아 있다.** 관리자에게는 그 회원의 토큰이 없어
+  블랙리스트에 넣을 수 없다(자진 탈퇴는 본인이 쓰던 토큰을 넣는다). Refresh Token 은 지워지므로 갱신은 막히고,
+  `users` 행이 없어 대부분의 API 는 실패하지만 **설계된 차단이 아니다.**
+  `JwtProperties.accessTokenValidity`만큼의 창이 남는다. 없애려면 사용자 단위 토큰 무효화(발급 시각 기준 차단)가 필요하다.
+- **리뷰 블라인드는 여전히 대시보드 SQL이다**(`docs/admin-runbook.md`). 관리자 페이지에 없다.
 - IP 허용목록을 바꾸려면 재시작해야 한다.
 - DB 소유자는 트리거를 지울 수 있다(7번).
 - `/internal/**`은 여전히 앱 로그인만으로 부를 수 있다(`docs/admin-runbook.md` "권한"). 관리자 체인이 생겼으니 옮길 수 있다.

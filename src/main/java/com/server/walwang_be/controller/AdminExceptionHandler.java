@@ -1,5 +1,6 @@
 package com.server.walwang_be.controller;
 
+import com.server.walwang_be.service.AdminTerminationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -35,6 +36,17 @@ public class AdminExceptionHandler {
             IllegalArgumentException.class})
     public ModelAndView badRequest(Exception e) {
         return view(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다.");
+    }
+
+    /**
+     * 해지를 실행하지 않고 되돌려보낸 경우. 확인 닉네임이 다르거나 사유가 비었을 때다.
+     *
+     * 여기만 예외 메시지를 화면에 쓴다 — 무엇을 고쳐야 하는지 알려줘야 관리자가 다시 시도할 수 있다.
+     * 그래서 이 예외의 메시지는 코드에 있는 고정 문자열만 담는다(AdminTerminationService 참고).
+     */
+    @ExceptionHandler(AdminTerminationService.TerminationRejected.class)
+    public ModelAndView rejected(AdminTerminationService.TerminationRejected e) {
+        return view(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler(AccessDeniedException.class)

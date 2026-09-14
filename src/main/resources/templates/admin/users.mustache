@@ -2,6 +2,7 @@
 {{> admin/_nav}}
 <main>
   <h1>회원 목록</h1>
+  {{#terminated}}<p class="info">{{.}} 의 이용계약을 해지했습니다. 접속기록에 사유와 함께 남았습니다.</p>{{/terminated}}
   <form method="get" action="/admin/users" class="filters">
     <input name="q" value="{{query}}" placeholder="이메일 또는 닉네임 일부" maxlength="100">
     <button type="submit">검색</button>

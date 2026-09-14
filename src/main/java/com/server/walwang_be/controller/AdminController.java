@@ -9,6 +9,7 @@ import com.server.walwang_be.security.AdminAuthenticationProvider;
 import com.server.walwang_be.security.AdminOperator;
 import com.server.walwang_be.security.ClientIpResolver;
 import com.server.walwang_be.service.AccessLogService;
+import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,14 +22,16 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
 /**
- * 관리자 페이지. 서버에서 그린다(Mustache). 조회 전용이라 GET만 있다.
+ * 관리자 페이지. 서버에서 그린다(Mustache).
  *
  * 개인정보를 보여주는 핸들러는 모두 같은 순서를 지킨다.
  *   1. audit(...) — 접속기록을 커밋한다. 실패하면 예외로 끝나 화면이 나가지 않는다.
@@ -36,6 +39,9 @@ import java.util.UUID;
  *
  * AOP나 인터셉터로 한꺼번에 기록하지 않고 여기서 직접 부르는 이유는
  * docs/admin-access-log.md "기록 방식" 참고. 빠뜨리면 AccessLogEnforcementInterceptor가 막는다.
+ *
+ * 쓰기 작업은 이용계약 해지 하나뿐이고, 그것만 순서가 다르다 — 기록을 먼저 커밋하지 않고
+ * 삭제와 같은 트랜잭션에 담는다(AdminTerminationService 주석). 그래서 audit(...)을 쓰지 않는다.
  *
  * 뷰 이름만 돌려준다. @ResponseBody를 쓰면 위 인터셉터가 막기 전에 본문이 나간다.
  */
@@ -49,6 +55,7 @@ public class AdminController {
     private static final int PAGE_MAX = 10_000;
 
     private final AdminUserService adminUserService;
+    private final AdminTerminationService adminTerminationService;
     private final AccessLogService accessLogService;
     private final ClientIpResolver clientIpResolver;
 
@@ -118,6 +125,32 @@ public class AdminController {
         model.addAttribute("title", "회원 상세");
         model.addAttribute("user", adminUserService.getUser(userId));
         return "admin/user-detail";
+    }
+
+    /**
+     * 이용계약 해지(강제 탈퇴). 되돌릴 수 없다 — 리뷰·저장·도장·여권이 지워지고
+     * Supabase 의 사진·도장 파일도 사라지며, 같은 이메일은 30일간 재가입이 막힌다.
+     *
+     * 여기서는 audit(...)을 부르지 않는다. 그 헬퍼는 접속기록을 따로 먼저 커밋하는데,
+     * 그러면 삭제가 실패했을 때 기록만 남는다. 기록은 서비스가 삭제와 같은 트랜잭션에서 남긴다.
+     *
+     * 실패하면 예외로 끝난다. 그때는 postHandle 이 돌지 않으므로 인터셉터가 오류 화면을 막지 않는다.
+     */
+    @PostMapping("/users/{userId}/terminate")
+    public String terminateUser(@PathVariable UUID userId,
+                                @RequestParam String reason,
+                                @RequestParam String confirmNickname,
+                                HttpServletRequest request,
+                                Authentication authentication,
+                                RedirectAttributes redirect) {
+        String operator = AdminOperator.require(authentication);
+        String nickname = adminTerminationService.terminate(
+                userId, reason, confirmNickname, operator, clientIpResolver.resolve(request));
+        // 기록은 위 트랜잭션 안에서 이미 커밋됐다. 인터셉터에는 남겼다는 사실만 알린다.
+        AccessLogEnforcementInterceptor.markRecorded(request);
+
+        redirect.addFlashAttribute("terminated", nickname);
+        return "redirect:/admin/users";
     }
 
     /**

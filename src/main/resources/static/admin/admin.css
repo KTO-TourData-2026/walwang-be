@@ -84,3 +84,24 @@ th { background: var(--soft); font-weight: 600; white-space: nowrap; }
 .login { max-width: 360px; margin: 48px auto; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack label { display: flex; flex-direction: column; gap: 4px; }
+
+/* 이용계약 해지. 접어 두는 이유는 CSP가 스크립트를 막아 확인 대화상자를 띄울 수 없기 때문이다 —
+   펼치는 동작 자체가 오조작을 한 번 걸러 준다. */
+.danger-zone {
+  margin: 32px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-fg);
+  border-radius: 6px;
+}
+.danger-zone summary { color: var(--danger-fg); font-weight: 600; cursor: pointer; }
+.danger-zone[open] summary { margin-bottom: 10px; }
+.danger-zone ul { margin: 8px 0; padding-left: 20px; }
+.danger-zone .stack { max-width: 420px; margin-top: 12px; }
+.danger-zone textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+}
+button.danger { background: var(--danger-fg); color: #fff; border-color: var(--danger-fg); }

@@ -24,11 +24,31 @@ CREATE TABLE IF NOT EXISTS access_log (
     detail         VARCHAR(500),
 
     -- AccessAction enum 과 똑같이 맞춘다. 값을 추가하면 여기도 고쳐야 INSERT 가 통과한다.
+    -- 아래 ALTER 블록이 같은 목록을 다시 걸므로, 이미 있는 테이블에도 값이 따라간다.
     CONSTRAINT ck_access_log_action CHECK (action IN (
         'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'TOTP_FAILURE', 'LOGIN_LOCKED', 'LOGOUT',
-        'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG'
+        'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG', 'TERMINATE_USER'
     ))
 );
+
+-- ─────────────────────────────────────────────────────────────
+-- action 목록 맞추기 (이미 테이블이 있는 DB 용)
+--
+-- 위 CREATE TABLE 은 테이블이 있으면 통째로 건너뛰므로, AccessAction 에 값을 추가했을 때
+-- 제약이 옛 목록에 머문다. 그래서 제약만 따로 다시 건다. 몇 번 돌려도 결과가 같다.
+--
+-- ⚠️ 앱을 배포하기 "전에" 돌린다. 순서를 어기면 새 action 으로 기록하는 순간 INSERT 가
+--    CHECK 에 걸린다. 조회 화면은 기록이 실패하면 화면이 열리지 않고, 이용계약 해지는
+--    기록과 삭제가 한 트랜잭션이라 통째로 롤백된다 — 회원이 지워지는 일은 없지만 기능이 멈춘다.
+-- ─────────────────────────────────────────────────────────────
+
+ALTER TABLE access_log DROP CONSTRAINT IF EXISTS ck_access_log_action;
+ALTER TABLE access_log ADD CONSTRAINT ck_access_log_action CHECK (action IN (
+    'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'TOTP_FAILURE', 'LOGIN_LOCKED', 'LOGOUT',
+    'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG',
+    -- 2026-09-14 추가. 관리자 페이지의 이용계약 해지(약관 14조 5항).
+    'TERMINATE_USER'
+));
 
 -- 접속기록 열람(최신순)과 보관 기간 정리
 CREATE INDEX IF NOT EXISTS idx_access_log_accessed_at ON access_log (accessed_at DESC);
@@ -114,6 +134,13 @@ $$;
 --   SELECT grantee, privilege_type FROM information_schema.role_table_grants
 --    WHERE table_name = 'access_log';
 --   -- anon, authenticated 가 없어야 한다.
+--
+--   SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_access_log_action';
+--   -- 목록에 TERMINATE_USER 가 있어야 한다. 없으면 위 ALTER 블록을 돌린다.
+--
+-- 이용계약 해지 이력 (사유가 detail 에 들어 있다. 1년 보관)
+--   SELECT accessed_at AT TIME ZONE 'Asia/Seoul' AS kst, operator, ip, target_user_id, detail
+--     FROM access_log WHERE action = 'TERMINATE_USER' ORDER BY accessed_at DESC;
 --
 -- 보관 기간 정리 (앱의 AccessLogRetentionScheduler 가 매일 04:30 KST 에 같은 쿼리를 돈다)
 --   DELETE FROM access_log WHERE accessed_at < now() - interval '1 year';

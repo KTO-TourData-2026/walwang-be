@@ -18,7 +18,14 @@ public enum AccessAction {
     LIST_USERS("회원 목록 조회"),
     SEARCH_USERS("회원 검색"),
     VIEW_USER("회원 상세 조회"),
-    VIEW_ACCESS_LOG("접속기록 열람");
+    VIEW_ACCESS_LOG("접속기록 열람"),
+    /**
+     * 이용계약 해지(강제 탈퇴). 관리자 페이지의 유일한 쓰기 작업이다.
+     *
+     * 조회와 달리 기록이 삭제와 같은 트랜잭션에서 커밋된다 —
+     * 판단 근거는 docs/admin-access-log.md "이용계약 해지" 참고.
+     */
+    TERMINATE_USER("이용계약 해지");
 
     private final String label;
 

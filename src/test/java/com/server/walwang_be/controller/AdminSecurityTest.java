@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpSession;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -165,6 +167,43 @@ class AdminSecurityTest extends AdminWebTestSupport {
                 .andExpect(status().isForbidden());
 
         verifyNoInteractions(accessLogService, loginAttempts);
+    }
+
+    /**
+     * 해지는 되돌릴 수 없다. 다른 사이트가 시작한 요청으로는 절대 실행되지 않아야 한다.
+     * 세션 쿠키의 SameSite=Strict 와 CSP form-action 'self' 가 한 겹 더 막지만,
+     * 서버에서도 토큰 없이는 핸들러까지 오지 않는지 여기서 고정한다.
+     */
+    @Test
+    void CSRF_토큰이_없는_해지_요청은_처리하지_않는다() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/users/" + UUID.randomUUID() + "/terminate")
+                        .param("reason", "약관 12조 위반").param("confirmNickname", "멍멍")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(adminTerminationService);
+    }
+
+    @Test
+    void 로그인하지_않으면_해지할_수_없다() throws Exception {
+        mockMvc.perform(post("/admin/users/" + UUID.randomUUID() + "/terminate")
+                        .param("reason", "약관 12조 위반").param("confirmNickname", "멍멍")
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+
+        verifyNoInteractions(adminTerminationService);
+    }
+
+    @Test
+    void 허용목록_밖에서는_해지_요청도_404() throws Exception {
+        mockMvc.perform(post("/admin/users/" + UUID.randomUUID() + "/terminate")
+                        .param("reason", "약관 12조 위반").param("confirmNickname", "멍멍")
+                        .with(viaNginx(OUTSIDE_IP)).with(csrf()))
+                .andExpect(status().isNotFound());
+
+        verifyNoInteractions(adminTerminationService);
     }
 
     @Test
