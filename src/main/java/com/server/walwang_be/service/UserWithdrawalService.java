@@ -58,8 +58,14 @@ public class UserWithdrawalService {
     private final SupabaseStorageClient storageClient;
     private final JwtProvider jwtProvider;
 
+    /**
+     * 탈퇴 처리.
+     *
+     * reason은 흔적을 남길지만 가른다. 자진 탈퇴면 아무것도 남기지 않고,
+     * 해지면 해시를 보관해 그 기간 동안 재가입을 막는다.
+     */
     @Transactional
-    public void withdraw(UUID userId, String accessToken) {
+    public void withdraw(UUID userId, String accessToken, WithdrawalReason reason) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
         // 유저를 지우기 전에 주소를 챙긴다. 지운 뒤에는 읽을 수 없다.
@@ -107,8 +113,11 @@ public class UserWithdrawalService {
         List<UUID> storeIdsToRefresh = affectedStores.stream().map(Store::getStoreId).toList();
         userRepository.deleteById(userId);
 
-        // 자진 탈퇴는 기록만 남고 재가입을 막지 않는다(WithdrawalReason 참고).
-        withdrawnEmailService.record(email, WithdrawalReason.SELF);
+        // 재가입을 막을 사유일 때만 흔적을 남긴다. 자진 탈퇴는 행조차 만들지 않는다 —
+        // 막지도 않을 해시를 30일 들고 있을 이유가 없다(WithdrawalReason 참고).
+        if (reason.blocksSignUp()) {
+            withdrawnEmailService.record(email, reason);
+        }
 
         // 토큰은 롤백되지 않으므로 커밋이 확정된 뒤에 정리한다.
         afterCommit(() -> {

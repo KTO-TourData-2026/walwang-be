@@ -13,6 +13,7 @@ import com.server.walwang_be.dto.SavedCourseListResponse;
 import com.server.walwang_be.dto.StoreCardResponse;
 import com.server.walwang_be.dto.UserPatchRequest;
 import com.server.walwang_be.dto.UserProfileResponse;
+import com.server.walwang_be.entity.WithdrawalReason;
 import com.server.walwang_be.security.BearerTokenResolver;
 import com.server.walwang_be.service.CourseService;
 import com.server.walwang_be.service.PassportService;
@@ -120,12 +121,16 @@ public class UserController {
     /**
      * 회원 탈퇴. 작성한 리뷰·저장한 가게·코스가 함께 사라지고,
      * 쓰던 토큰도 즉시 무효화된다. 되돌릴 수 없다.
+     *
+     * 본인이 스스로 하는 탈퇴라 사유는 언제나 SELF다 — 받지 않는다.
+     * 약관 위반 해지(TERMINATED)는 본인이 요청할 수 있는 것이 아니다.
      */
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(
             @AuthenticationPrincipal UUID userId,
             @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        userWithdrawalService.withdraw(userId, BearerTokenResolver.resolve(authorization));
+        userWithdrawalService.withdraw(
+                userId, BearerTokenResolver.resolve(authorization), WithdrawalReason.SELF);
         return ResponseEntity.ok().build();
     }
 
