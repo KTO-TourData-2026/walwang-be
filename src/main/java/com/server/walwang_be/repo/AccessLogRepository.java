@@ -1,27 +1,22 @@
 package com.server.walwang_be.repo;
 
 import com.server.walwang_be.entity.AccessLog;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
-public interface AccessLogRepository extends JpaRepository<AccessLog, Long> {
-
-    /* 접속기록 열람. 같은 시각이 겹쳐도 순서가 흔들리지 않게 log_id로 한 번 더 줄 세운다. */
-
-    Page<AccessLog> findAllByOrderByAccessedAtDescLogIdDesc(Pageable pageable);
-
-    Page<AccessLog> findByOperatorOrderByAccessedAtDescLogIdDesc(String operator, Pageable pageable);
-
-    Page<AccessLog> findByTargetUserIdOrderByAccessedAtDescLogIdDesc(UUID targetUserId, Pageable pageable);
-
-    Page<AccessLog> findByOperatorAndTargetUserIdOrderByAccessedAtDescLogIdDesc(
-            String operator, UUID targetUserId, Pageable pageable);
+/**
+ * 접속기록.
+ *
+ * 열람은 JpaSpecificationExecutor 로 한다. 거르는 조건이 계정·정보주체·수행업무 셋이고
+ * 조합이 여덟 가지라, 파생 메서드로 두면 이름만 긴 메서드가 여덟 개 생긴다.
+ * JPQL 의 ":param is null" 방식은 쓰지 않는다 — Postgres 가 파라미터 타입을 정하지 못해
+ * enum 조건에서 터진다. 정렬(accessed_at desc, log_id desc)은 부르는 쪽이 Pageable 에 담는다.
+ */
+public interface AccessLogRepository extends JpaRepository<AccessLog, Long>,
+        JpaSpecificationExecutor<AccessLog> {
 
     /**
      * 보관 기간이 끝난 행을 지운다.

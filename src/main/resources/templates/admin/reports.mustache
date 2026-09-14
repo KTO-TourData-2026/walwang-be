@@ -1,0 +1,41 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <h1>신고</h1>
+  {{#moderated}}<p class="info">{{.}} 가게 <strong>{{moderatedStore}}</strong> 의 집계에 쓰인 리뷰는 이제 {{moderatedCounted}}건입니다.</p>{{/moderated}}
+  <p class="meta">신고가 많은 리뷰부터 보여줍니다. 리뷰 본문과 사진은 상세 화면에서만 보이며, 상세 조회는 작성자와 함께 기록됩니다.
+    임시조치 기간은 {{temporaryMeasureDays}}일입니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="num">신고</th><th>최근 신고</th><th>사유</th><th>가게</th>
+          <th>작성자</th><th>작성일</th><th>구분</th><th>노출 상태</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#reports}}
+        <tr>
+          <td class="num">{{reportCount}}</td>
+          <td class="nowrap">{{lastReportedAt}}</td>
+          <td>{{reasonSummary}}</td>
+          <td>{{storeName}}</td>
+          <td>{{nickname}}</td>
+          <td class="nowrap">{{createdAt}}</td>
+          <td>{{kind}}</td>
+          <td class="nowrap">
+            {{status}}
+            {{#blinded}}<small class="{{#overdue}}overdue{{/overdue}}">{{blindedDays}} 경과</small>{{/blinded}}
+          </td>
+          <td><a href="/admin/reports/{{reviewId}}">상세</a></td>
+        </tr>
+        {{/reports}}
+        {{^reports}}
+        <tr><td colspan="9" class="empty">신고된 리뷰가 없습니다.</td></tr>
+        {{/reports}}
+      </tbody>
+    </table>
+  </div>
+  {{> admin/_pagination}}
+</main>
+{{> admin/_foot}}

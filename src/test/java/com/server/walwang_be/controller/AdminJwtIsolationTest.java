@@ -62,7 +62,7 @@ class AdminJwtIsolationTest extends AdminWebTestSupport {
 
     @Test
     void 접속기록_열람에서도_operator가_바뀌지_않는다() throws Exception {
-        given(accessLogService.find("", null, 0)).willReturn(Page.empty(PageRequest.of(0, 50)));
+        given(accessLogService.find("", null, null, 0)).willReturn(Page.empty(PageRequest.of(0, 50)));
         MockHttpSession session = login();
 
         mockMvc.perform(get("/admin/access-logs")

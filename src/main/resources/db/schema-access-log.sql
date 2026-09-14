@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS access_log (
     -- 아래 ALTER 블록이 같은 목록을 다시 걸므로, 이미 있는 테이블에도 값이 따라간다.
     CONSTRAINT ck_access_log_action CHECK (action IN (
         'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'TOTP_FAILURE', 'LOGIN_LOCKED', 'LOGOUT',
-        'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG', 'TERMINATE_USER'
+        'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG', 'TERMINATE_USER',
+        'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW'
     ))
 );
 
@@ -47,7 +48,9 @@ ALTER TABLE access_log ADD CONSTRAINT ck_access_log_action CHECK (action IN (
     'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'TOTP_FAILURE', 'LOGIN_LOCKED', 'LOGOUT',
     'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG',
     -- 2026-09-14 추가. 관리자 페이지의 이용계약 해지(약관 14조 5항).
-    'TERMINATE_USER'
+    'TERMINATE_USER',
+    -- 2026-09-14 추가. 신고 조회와 리뷰 임시조치(약관 10조·11조).
+    'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW'
 ));
 
 -- 접속기록 열람(최신순)과 보관 기간 정리
@@ -136,7 +139,12 @@ $$;
 --   -- anon, authenticated 가 없어야 한다.
 --
 --   SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_access_log_action';
---   -- 목록에 TERMINATE_USER 가 있어야 한다. 없으면 위 ALTER 블록을 돌린다.
+--   -- 목록에 TERMINATE_USER, BLIND_REVIEW 가 있어야 한다. 없으면 위 ALTER 블록을 돌린다.
+--
+-- 리뷰 임시조치 이력 (사유가 detail 에 들어 있다)
+--   SELECT accessed_at AT TIME ZONE 'Asia/Seoul' AS kst, operator, action, target_user_id, detail
+--     FROM access_log WHERE action IN ('BLIND_REVIEW', 'UNBLIND_REVIEW')
+--    ORDER BY accessed_at DESC;
 --
 -- 이용계약 해지 이력 (사유가 detail 에 들어 있다. 1년 보관)
 --   SELECT accessed_at AT TIME ZONE 'Asia/Seoul' AS kst, operator, ip, target_user_id, detail

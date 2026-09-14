@@ -5,14 +5,19 @@ import com.server.walwang_be.entity.AccessAction;
 import com.server.walwang_be.entity.AccessLog;
 import com.server.walwang_be.repo.AccessLogRepository;
 import com.server.walwang_be.security.ClientIpResolver;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -69,23 +74,22 @@ public class AccessLogService {
                 .build();
     }
 
-    /** operator가 빈 문자열이면 계정으로 거르지 않는다. */
+    /**
+     * 접속기록 열람. 셋 다 비어 있으면 전체를 최신순으로 본다.
+     *
+     * 같은 시각이 겹쳐도 순서가 흔들리지 않게 log_id로 한 번 더 줄 세운다.
+     *
+     * @param operator     빈 문자열이거나 null이면 계정으로 거르지 않는다
+     * @param targetUserId null이면 정보주체로 거르지 않는다
+     * @param action       null이면 수행업무로 거르지 않는다
+     */
     @Transactional(readOnly = true)
-    public Page<AdminAccessLogRow> find(String operator, UUID targetUserId, int page) {
-        Pageable pageable = PageRequest.of(page, PAGE_SIZE);
-        boolean byOperator = operator != null && !operator.isEmpty();
+    public Page<AdminAccessLogRow> find(String operator, UUID targetUserId, AccessAction action, int page) {
+        Pageable pageable = PageRequest.of(page, PAGE_SIZE,
+                Sort.by(Sort.Order.desc("accessedAt"), Sort.Order.desc("logId")));
 
-        Page<AccessLog> logs;
-        if (byOperator && targetUserId != null) {
-            logs = accessLogRepository.findByOperatorAndTargetUserIdOrderByAccessedAtDescLogIdDesc(
-                    operator, targetUserId, pageable);
-        } else if (byOperator) {
-            logs = accessLogRepository.findByOperatorOrderByAccessedAtDescLogIdDesc(operator, pageable);
-        } else if (targetUserId != null) {
-            logs = accessLogRepository.findByTargetUserIdOrderByAccessedAtDescLogIdDesc(targetUserId, pageable);
-        } else {
-            logs = accessLogRepository.findAllByOrderByAccessedAtDescLogIdDesc(pageable);
-        }
+        Page<AccessLog> logs = accessLogRepository.findAll(
+                filter(operator, targetUserId, action), pageable);
         return logs.map(log -> new AdminAccessLogRow(
                 log.getLogId(),
                 AdminViewFormats.dateTime(log.getAccessedAt()),
@@ -96,6 +100,30 @@ public class AccessLogService {
                 log.getAction().name(),
                 log.getAction().label(),
                 log.getDetail() == null ? "" : log.getDetail()));
+    }
+
+    /**
+     * 채워진 조건만 and로 엮는다.
+     *
+     * 조건이 하나도 없으면 where 절이 붙지 않아 전체 조회가 된다 —
+     * conjunction()은 항상 참인 조건이고, Specification은 그 경우 SQL에서 생략된다.
+     */
+    private static Specification<AccessLog> filter(String operator, UUID targetUserId, AccessAction action) {
+        return (root, query, builder) -> {
+            List<Predicate> conditions = new ArrayList<>(3);
+            if (operator != null && !operator.isEmpty()) {
+                conditions.add(builder.equal(root.get("operator"), operator));
+            }
+            if (targetUserId != null) {
+                conditions.add(builder.equal(root.get("targetUserId"), targetUserId));
+            }
+            if (action != null) {
+                conditions.add(builder.equal(root.get("action"), action));
+            }
+            return conditions.isEmpty()
+                    ? builder.conjunction()
+                    : builder.and(conditions.toArray(new Predicate[0]));
+        };
     }
 
     private static String truncate(String value, int max) {

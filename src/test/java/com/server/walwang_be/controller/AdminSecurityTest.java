@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -207,6 +208,30 @@ class AdminSecurityTest extends AdminWebTestSupport {
     }
 
     @Test
+    void CSRF_토큰이_없는_블라인드_요청은_처리하지_않는다() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/reports/" + UUID.randomUUID() + "/blind")
+                        .param("reason", "약관 11조 위반")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(adminModerationService);
+    }
+
+    @Test
+    void 로그인하지_않으면_신고를_볼_수도_처리할_수도_없다() throws Exception {
+        mockMvc.perform(get("/admin/reports").with(fromAllowedIp()))
+                .andExpect(redirectedUrl("/admin/login"));
+        mockMvc.perform(post("/admin/reports/" + UUID.randomUUID() + "/unblind")
+                        .param("reason", "이의제기 수용")
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+
+        verifyNoInteractions(adminModerationService, accessLogService);
+    }
+
+    @Test
     void 로그아웃은_기록되고_세션이_끊긴다() throws Exception {
         MockHttpSession session = login();
 
@@ -218,6 +243,19 @@ class AdminSecurityTest extends AdminWebTestSupport {
     }
 
     // ── 응답 헤더 ───────────────────────────────────────────────
+
+    /**
+     * 리뷰 사진을 보여주려면 img-src 에 그 오리진이 있어야 한다.
+     * 열리는 것은 이미지 하나뿐이고 스크립트·fetch·프레임은 default-src 'none' 이 그대로 막는다.
+     */
+    @Test
+    void 리뷰_사진_오리진만_이미지로_허용한다() throws Exception {
+        mockMvc.perform(get("/admin/login").with(fromAllowedIp()))
+                .andExpect(header().string("Content-Security-Policy",
+                        containsString("img-src 'self' " + SUPABASE_URL)))
+                .andExpect(header().string("Content-Security-Policy", containsString("default-src 'none'")))
+                .andExpect(header().string("Content-Security-Policy", not(containsString("script-src"))));
+    }
 
     @Test
     void 캐시_프레임_스크립트_리퍼러를_막는_헤더가_붙는다() throws Exception {

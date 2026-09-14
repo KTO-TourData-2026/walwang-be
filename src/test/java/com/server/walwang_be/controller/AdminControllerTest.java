@@ -2,8 +2,11 @@ package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.AdminAccessLogRow;
 import com.server.walwang_be.dto.AdminUserDetail;
+import com.server.walwang_be.dto.AdminReportListItem;
+import com.server.walwang_be.dto.AdminReportedReviewDetail;
 import com.server.walwang_be.dto.AdminUserListItem;
 import com.server.walwang_be.entity.AccessAction;
+import com.server.walwang_be.service.AdminModerationService;
 import com.server.walwang_be.service.AdminTerminationService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -37,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminControllerTest extends AdminWebTestSupport {
 
     private static final UUID USER_ID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    private static final UUID REVIEW_ID = UUID.fromString("dddddddd-eeee-ffff-0000-111111111111");
 
     @Test
     void 회원_목록은_기록한_뒤에_조회하고_이메일은_가려서_보여준다() throws Exception {
@@ -99,7 +103,7 @@ class AdminControllerTest extends AdminWebTestSupport {
 
     @Test
     void 접속기록_열람도_기록된다() throws Exception {
-        given(accessLogService.find("bob", USER_ID, 0)).willReturn(new PageImpl<>(List.of(
+        given(accessLogService.find("bob", USER_ID, null, 0)).willReturn(new PageImpl<>(List.of(
                 new AdminAccessLogRow(7, "2026-09-13 09:00:00", "bob", "203.0.113.20", true, USER_ID.toString(),
                         "VIEW_USER", "회원 상세 조회", "회원 상세(리뷰·저장·도장 요약)"),
                 new AdminAccessLogRow(6, "2026-09-13 08:59:00", "bob", "203.0.113.20", false, "",
@@ -116,7 +120,7 @@ class AdminControllerTest extends AdminWebTestSupport {
         InOrder order = inOrder(accessLogService);
         order.verify(accessLogService).record(USERNAME, ALLOWED_IP, AccessAction.VIEW_ACCESS_LOG, USER_ID,
                 "접속기록 열람 page=1 operator=bob targetUserId=" + USER_ID);
-        order.verify(accessLogService).find("bob", USER_ID, 0);
+        order.verify(accessLogService).find("bob", USER_ID, null, 0);
     }
 
     @Test
@@ -207,6 +211,142 @@ class AdminControllerTest extends AdminWebTestSupport {
                 .andExpect(status().isMethodNotAllowed());
 
         verify(adminTerminationService, never()).terminate(any(), any(), any(), any(), any());
+    }
+
+    // ── 신고와 임시조치 ─────────────────────────────────────────
+
+    @Test
+    void 신고_목록은_기록한_뒤에_조회한다() throws Exception {
+        given(adminModerationService.listReports(0)).willReturn(new PageImpl<>(List.of(
+                new AdminReportListItem(REVIEW_ID, 3, "2026-09-13 09:00:00", "정상",
+                        false, "", false, "테스트 카페", "멍멍", "2026-09-01 10:00:00", "실제",
+                        "욕설 (2건), 광고")),
+                PageRequest.of(0, 20), 1));
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/reports").session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("욕설 (2건), 광고")))
+                .andExpect(content().string(containsString("/admin/reports/" + REVIEW_ID)));
+
+        InOrder order = inOrder(accessLogService, adminModerationService);
+        order.verify(accessLogService).record(USERNAME, ALLOWED_IP, AccessAction.VIEW_REPORTS, null,
+                "신고 목록 page=1");
+        order.verify(adminModerationService).listReports(0);
+    }
+
+    /** 본문·사진을 보여주는 화면이라 조회가 기록보다 앞서면 안 된다. */
+    @Test
+    void 신고_리뷰_상세는_기록한_뒤에_본문을_읽고_이스케이프해_보여준다() throws Exception {
+        given(adminModerationService.getReportedReview(REVIEW_ID)).willReturn(
+                new AdminReportedReviewDetail(REVIEW_ID, USER_ID, "멍멍", "테스트 카페",
+                        "2026-09-01 10:00:00", "신고된 본문<script>", true,
+                        SUPABASE_URL + "/storage/v1/object/public/review-photos/a.jpg",
+                        "소·중형", "가능", "실제", "정상", false, "", "", false,
+                        2, List.of(new AdminReportedReviewDetail.ReasonRow("욕설", 2, "2026-09-13 09:00:00"))));
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/reports/" + REVIEW_ID).session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("신고된 본문&lt;script&gt;")))
+                .andExpect(content().string(not(containsString("신고된 본문<script>"))))
+                .andExpect(content().string(containsString("review-photos/a.jpg")))
+                .andExpect(content().string(containsString("/admin/reports/" + REVIEW_ID + "/blind")));
+
+        InOrder order = inOrder(accessLogService, adminModerationService);
+        order.verify(accessLogService).record(USERNAME, ALLOWED_IP, AccessAction.VIEW_REPORTED_REVIEW,
+                null, "신고 리뷰 상세(본문·사진 포함) 리뷰 " + REVIEW_ID);
+        order.verify(adminModerationService).getReportedReview(REVIEW_ID);
+    }
+
+    @Test
+    void 블라인드는_사유를_서비스로_넘기고_신고_목록으로_돌아간다() throws Exception {
+        given(adminModerationService.blind(REVIEW_ID, "약관 11조 위반", USERNAME, ALLOWED_IP))
+                .willReturn(new AdminModerationService.Applied(REVIEW_ID, "테스트 카페", 2));
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/reports/" + REVIEW_ID + "/blind")
+                        .param("reason", "약관 11조 위반")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/reports"))
+                .andExpect(flash().attribute("moderatedCounted", 2L));
+
+        verify(adminModerationService).blind(REVIEW_ID, "약관 11조 위반", USERNAME, ALLOWED_IP);
+        // 기록은 서비스가 상태 변경·재집계와 같은 트랜잭션에서 남긴다.
+        verify(accessLogService, never()).record(any(), any(), eq(AccessAction.BLIND_REVIEW), any(), any());
+    }
+
+    @Test
+    void 해제는_unblind를_부른다() throws Exception {
+        given(adminModerationService.unblind(REVIEW_ID, "이의제기 수용", USERNAME, ALLOWED_IP))
+                .willReturn(new AdminModerationService.Applied(REVIEW_ID, "테스트 카페", 3));
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/reports/" + REVIEW_ID + "/unblind")
+                        .param("reason", "이의제기 수용")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/reports"));
+
+        verify(adminModerationService).unblind(REVIEW_ID, "이의제기 수용", USERNAME, ALLOWED_IP);
+    }
+
+    @Test
+    void 상태가_맞지_않으면_400_화면이_나가고_이유를_알려준다() throws Exception {
+        willThrow(new AdminModerationService.ModerationRejected(
+                "정상 노출 중인 리뷰만 블라인드할 수 있습니다. 아무것도 바꾸지 않았습니다."))
+                .given(adminModerationService).blind(any(), any(), any(), any());
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/reports/" + REVIEW_ID + "/blind")
+                        .param("reason", "약관 11조 위반")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("정상 노출 중인 리뷰만")));
+    }
+
+    @Test
+    void 처리_사유가_없으면_서비스를_부르지_않고_400_화면() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/reports/" + REVIEW_ID + "/blind")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(status().isBadRequest());
+
+        verify(adminModerationService, never()).blind(any(), any(), any(), any());
+    }
+
+    // ── 접속기록 필터 ───────────────────────────────────────────
+
+    @Test
+    void 접속기록은_수행업무로도_거를_수_있고_그_조건도_기록된다() throws Exception {
+        given(accessLogService.find("", null, AccessAction.TERMINATE_USER, 0))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 50), 0));
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/access-logs").param("action", "TERMINATE_USER")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk())
+                // 선택 상자가 고른 값을 유지한다.
+                .andExpect(content().string(containsString("value=\"TERMINATE_USER\" selected")));
+
+        InOrder order = inOrder(accessLogService);
+        order.verify(accessLogService).record(USERNAME, ALLOWED_IP, AccessAction.VIEW_ACCESS_LOG, null,
+                "접속기록 열람 page=1 action=TERMINATE_USER");
+        order.verify(accessLogService).find("", null, AccessAction.TERMINATE_USER, 0);
+    }
+
+    /** 링크를 잘못 고친 정도로 화면을 닫지 않는다. 필터만 무시한다. */
+    @Test
+    void 모르는_수행업무_값은_무시하고_전체를_보여준다() throws Exception {
+        given(accessLogService.find("", null, null, 0))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 50), 0));
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/access-logs").param("action", "NOT_AN_ACTION")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk());
+
+        verify(accessLogService).find("", null, null, 0);
     }
 
     @Test

@@ -5,6 +5,12 @@
   <form method="get" action="/admin/access-logs" class="filters">
     <input name="operator" value="{{operatorFilter}}" placeholder="계정" maxlength="50">
     <input name="targetUserId" value="{{targetUserIdFilter}}" placeholder="정보주체(회원 ID)" maxlength="36">
+    <select name="action">
+      <option value="">수행업무 전체</option>
+      {{#actionOptions}}
+      <option value="{{value}}"{{#selected}} selected{{/selected}}>{{label}}</option>
+      {{/actionOptions}}
+    </select>
     <button type="submit">거르기</button>
     <a href="/admin/access-logs">초기화</a>
   </form>
@@ -20,7 +26,7 @@
           <td class="nowrap">{{accessedAt}}</td>
           <td>{{operator}}</td>
           <td><code>{{ip}}</code></td>
-          <td title="{{action}}">{{actionLabel}}</td>
+          <td class="nowrap"><a href="/admin/access-logs?action={{action}}" title="{{action}}">{{actionLabel}}</a></td>
           <td>{{#hasTarget}}<a href="/admin/access-logs?targetUserId={{targetUserId}}"><code>{{targetUserId}}</code></a>{{/hasTarget}}</td>
           <td>{{detail}}</td>
         </tr>

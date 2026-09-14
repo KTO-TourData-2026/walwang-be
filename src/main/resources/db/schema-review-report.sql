@@ -55,6 +55,18 @@ CREATE INDEX IF NOT EXISTS idx_review_report_review
 --   SELECT blind_status, count(*) FROM reviews GROUP BY blind_status;
 --   -> 기존 리뷰는 전부 NORMAL 이어야 한다
 --
--- 관리자 조치 (자동화하지 않는다. 내용을 보고 직접 판단한다)
+-- 관리자 조치는 관리자 페이지에서 한다 (관리자 페이지 > 신고).
+-- 기록이 남고 재집계까지 함께 돌아간다 — docs/admin-runbook.md 참고.
+-- 아래 SQL 은 관리자 페이지를 쓸 수 없을 때의 대체 수단이다. 이 경로로 바꾸면
+-- 접속기록이 남지 않고 store_size_status 재집계도 돌지 않으므로 반드시 수동으로 재집계해야 한다.
 --   UPDATE reviews SET blind_status = 'BLINDED', blinded_at = now() WHERE review_id = '...';
 --   UPDATE reviews SET blind_status = 'NORMAL',  blinded_at = NULL  WHERE review_id = '...';
+--
+-- blinded_at 에는 인덱스를 두지 않는다. 임시조치 만료를 찾는 조회
+-- (blind_status = 'BLINDED' AND blinded_at < now() - interval '30 days', BlindExpiryScheduler)는
+-- 하루에 한 번 돌고 가려진 리뷰 자체가 소수라 전체 훑기로 충분하다.
+--
+-- 임시조치가 30일을 넘긴 리뷰
+--   SELECT review_id, blinded_at FROM reviews
+--    WHERE blind_status = 'BLINDED' AND blinded_at < now() - interval '30 days'
+--    ORDER BY blinded_at;

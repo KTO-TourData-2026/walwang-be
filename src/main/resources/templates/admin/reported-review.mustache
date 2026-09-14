@@ -1,0 +1,75 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <p><a href="/admin/reports">← 신고 목록</a></p>
+  {{#review}}
+  <h1>신고된 리뷰 <small>{{reportCount}}건</small></h1>
+  <p class="notice">이 화면은 리뷰 본문과 사진을 보여줍니다. 임시조치를 판단하기 위한 자리이며, 열람이 작성자와 함께 기록됩니다.</p>
+
+  <dl class="facts">
+    <dt>리뷰 ID</dt><dd><code>{{reviewId}}</code></dd>
+    <dt>작성자</dt><dd>{{nickname}} · <a href="/admin/users/{{authorUserId}}">회원 상세</a></dd>
+    <dt>가게</dt><dd>{{storeName}}</dd>
+    <dt>작성일</dt><dd>{{createdAt}}</dd>
+    <dt>동반</dt><dd>{{dogSize}} · {{dogAllowed}}</dd>
+    <dt>구분</dt><dd>{{kind}}</dd>
+    <dt>노출 상태</dt>
+    <dd>{{status}}{{#blinded}} <small>({{blindedAt}}부터 <span class="{{#overdue}}overdue{{/overdue}}">{{blindedDays}} 경과</span>)</small>{{/blinded}}</dd>
+  </dl>
+
+  <section>
+    <h2>본문</h2>
+    {{#content}}<p class="review-content">{{.}}</p>{{/content}}
+    {{^content}}<p class="empty">본문이 없습니다.</p>{{/content}}
+  </section>
+
+  <section>
+    <h2>사진</h2>
+    {{#hasPhoto}}<p><img class="review-photo" src="{{photoUrl}}" alt="신고된 리뷰의 사진"></p>{{/hasPhoto}}
+    {{^hasPhoto}}<p class="empty">사진이 없습니다.</p>{{/hasPhoto}}
+  </section>
+
+  <section>
+    <h2>신고 사유</h2>
+    <p class="meta">신고한 회원은 표시하지 않습니다. 판단에 필요하지 않습니다.</p>
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>사유</th><th class="num">건수</th><th>최근 신고</th></tr></thead>
+        <tbody>
+          {{#reasons}}
+          <tr><td>{{reason}}</td><td class="num">{{count}}</td><td class="nowrap">{{lastReportedAt}}</td></tr>
+          {{/reasons}}
+          {{^reasons}}<tr><td colspan="3" class="empty">신고가 없습니다.</td></tr>{{/reasons}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="moderation">
+    <h2>처리</h2>
+    {{^blinded}}
+    <p class="meta">블라인드하면 앱 목록·상세에서 사라지고 동반 가능 점수 집계에서도 빠집니다.
+      사진 파일은 지우지 않습니다. 되돌릴 수 있습니다.</p>
+    <form method="post" action="/admin/reports/{{reviewId}}/blind" class="stack">
+      <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+      <label>처리 사유 <small>어떤 약관·법령 위반으로 판단했는지. 200자 이내</small>
+        <textarea name="reason" rows="3" maxlength="200" required></textarea>
+      </label>
+      <button type="submit" class="danger">블라인드</button>
+    </form>
+    {{/blinded}}
+    {{#blinded}}
+    <p class="meta">해제하면 앱에 다시 노출되고 집계에도 돌아갑니다.</p>
+    <form method="post" action="/admin/reports/{{reviewId}}/unblind" class="stack">
+      <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+      <label>처리 사유 <small>이의제기를 받아들인 근거 등. 200자 이내</small>
+        <textarea name="reason" rows="3" maxlength="200" required></textarea>
+      </label>
+      <button type="submit">블라인드 해제</button>
+    </form>
+    {{/blinded}}
+    <p class="meta">삭제 확정(노출을 영구히 끊는 처리)은 이 화면에 없습니다. docs/admin-runbook.md 를 따르세요.</p>
+  </section>
+  {{/review}}
+</main>
+{{> admin/_foot}}

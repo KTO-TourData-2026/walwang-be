@@ -100,7 +100,8 @@ public class Review {
     private boolean verified;
 
     /**
-     * 노출 상태. 신고가 들어와도 서버는 건드리지 않고 관리자가 DB에서 직접 바꾼다.
+     * 노출 상태. 신고가 들어와도 서버는 스스로 바꾸지 않는다 —
+     * 관리자가 내용을 보고 관리자 페이지에서 정한다(blind/unblind).
      * 읽는 쪽은 이 값을 존중해야 한다 — 가려둔 리뷰가 집계에 남으면 가린 의미가 없다.
      */
     @Enumerated(EnumType.STRING)
@@ -129,5 +130,28 @@ public class Review {
         this.demo = demo;
         this.verified = verified;
         this.blindStatus = BlindStatus.NORMAL;
+    }
+
+    /**
+     * 임시조치. 노출을 끊고 가린 시각을 남긴다(약관 11조, 정보통신망법 44조의2).
+     *
+     * 이미 가려진 리뷰에는 다시 걸지 않는다 — blindedAt 이 밀리면 30일 기한이 그만큼 늘어난다.
+     * 부르는 쪽이 상태를 먼저 확인하고, 여기서도 한 번 더 막는다.
+     */
+    public void blind() {
+        if (blindStatus == BlindStatus.BLINDED) {
+            throw new IllegalStateException("이미 블라인드된 리뷰입니다.");
+        }
+        this.blindStatus = BlindStatus.BLINDED;
+        this.blindedAt = Instant.now();
+    }
+
+    /** 임시조치 해제. 가린 시각도 지운다 — 지금 가려져 있지 않으므로 셀 기한이 없다. */
+    public void unblind() {
+        if (blindStatus != BlindStatus.BLINDED) {
+            throw new IllegalStateException("블라인드 상태가 아닌 리뷰입니다.");
+        }
+        this.blindStatus = BlindStatus.NORMAL;
+        this.blindedAt = null;
     }
 }

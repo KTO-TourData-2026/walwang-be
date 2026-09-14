@@ -25,7 +25,16 @@ public enum AccessAction {
      * 조회와 달리 기록이 삭제와 같은 트랜잭션에서 커밋된다 —
      * 판단 근거는 docs/admin-access-log.md "이용계약 해지" 참고.
      */
-    TERMINATE_USER("이용계약 해지");
+    TERMINATE_USER("이용계약 해지"),
+    VIEW_REPORTS("신고 목록 조회"),
+    /**
+     * 신고된 리뷰 상세. 리뷰 본문과 사진이 화면에 나온다 —
+     * 회원 상세(요약만)보다 많이 보여주는 자리라 대상 회원과 함께 남긴다.
+     */
+    VIEW_REPORTED_REVIEW("신고 리뷰 상세 조회"),
+    /** 임시조치(약관 11조). 노출을 끊고 집계에서 뺀다. 되돌릴 수 있다. */
+    BLIND_REVIEW("리뷰 블라인드"),
+    UNBLIND_REVIEW("리뷰 블라인드 해제");
 
     private final String label;
 

@@ -3,10 +3,12 @@ package com.server.walwang_be.repo;
 import com.server.walwang_be.dto.AdminUserDetail;
 import com.server.walwang_be.dto.AdminUserListItem;
 import com.server.walwang_be.entity.AccessAction;
+import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.entity.CourseDuration;
 import com.server.walwang_be.entity.DogSize;
 import com.server.walwang_be.entity.Passport;
 import com.server.walwang_be.entity.Review;
+import com.server.walwang_be.entity.ReviewReport;
 import com.server.walwang_be.entity.SavedCourse;
 import com.server.walwang_be.entity.SavedStore;
 import com.server.walwang_be.entity.StampStatus;
@@ -14,7 +16,10 @@ import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.TermCode;
 import com.server.walwang_be.entity.User;
 import com.server.walwang_be.entity.UserAgreement;
+import com.server.walwang_be.repo.AdminModerationQueryRepository.ReasonCount;
+import com.server.walwang_be.repo.AdminModerationQueryRepository.ReportedReviewRow;
 import com.server.walwang_be.service.AccessLogService;
+import com.server.walwang_be.service.AdminModerationService;
 import com.server.walwang_be.service.AdminUserService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeAll;
@@ -25,6 +30,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -37,11 +43,13 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * db/schema-access-log.sql 과 관리자 조회 쿼리를 실제 PostgreSQL(PostGIS)에서 돌린다.
@@ -100,6 +108,8 @@ class AdminPostgresTest {
     AccessLogService accessLogService;
     @Autowired
     AdminUserService adminUserService;
+    @Autowired
+    AdminModerationQueryRepository moderationQueryRepository;
     @Autowired
     AccessLogRepository accessLogRepository;
     @Autowired
@@ -200,12 +210,33 @@ class AdminPostgresTest {
         accessLogService.record("reader-b", "203.0.113.11", AccessAction.VIEW_USER, target, "second");
         accessLogService.record("reader-a", "203.0.113.10", AccessAction.LIST_USERS, null, "third");
 
-        assertThat(accessLogService.find("", target, 0).getContent())
+        assertThat(accessLogService.find("", target, null, 0).getContent())
                 .extracting(row -> row.detail()).containsExactly("second", "first");
-        assertThat(accessLogService.find("reader-a", null, 0).getContent())
+        assertThat(accessLogService.find("reader-a", null, null, 0).getContent())
                 .extracting(row -> row.detail()).containsExactly("third", "first");
-        assertThat(accessLogService.find("reader-a", target, 0).getContent())
+        assertThat(accessLogService.find("reader-a", target, null, 0).getContent())
                 .extracting(row -> row.detail()).containsExactly("first");
+    }
+
+    /** 수행업무 필터. Specification 으로 조립한 where 절이 실제 DB 에서 도는지 본다. */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 접속기록_열람은_수행업무로도_거른다() {
+        UUID target = UUID.randomUUID();
+        accessLogService.record("filter-a", "203.0.113.10", AccessAction.VIEW_USER, target, "상세");
+        accessLogService.record("filter-a", "203.0.113.10", AccessAction.BLIND_REVIEW, target, "블라인드");
+        accessLogService.record("filter-b", "203.0.113.11", AccessAction.BLIND_REVIEW, null, "다른 계정 블라인드");
+
+        assertThat(accessLogService.find("", target, AccessAction.BLIND_REVIEW, 0).getContent())
+                .extracting(row -> row.detail()).containsExactly("블라인드");
+        assertThat(accessLogService.find("filter-a", null, AccessAction.BLIND_REVIEW, 0).getContent())
+                .extracting(row -> row.detail()).containsExactly("블라인드");
+        assertThat(accessLogService.find("", null, AccessAction.BLIND_REVIEW, 0).getContent())
+                .extracting(row -> row.detail())
+                .containsExactly("다른 계정 블라인드", "블라인드");
+        // 필터가 없으면 그대로 전체가 나온다.
+        assertThat(accessLogService.find("filter-a", null, null, 0).getContent())
+                .extracting(row -> row.detail()).containsExactly("블라인드", "상세");
     }
 
     // ── 관리자 조회 쿼리 ─────────────────────────────────────────
@@ -271,6 +302,69 @@ class AdminPostgresTest {
 
         assertThatThrownBy(() -> adminUserService.getUser(UUID.randomUUID()))
                 .isInstanceOf(NoSuchElementException.class);
+    }
+
+    /**
+     * 신고 조회 쿼리. 그룹 집계와 countQuery 는 JPQL 이 파싱돼도 실행에서 어긋날 수 있어 여기서 돌려 본다.
+     */
+    @Test
+    void 신고_목록과_사유_집계가_실제_DB에서_돈다() {
+        Store store = persist(Store.builder().externalId("verify-store-report").name("신고 카페")
+                .lat(37.5665).lng(126.9780).address("서울 중구").type("카페").build());
+        User author = persist(User.builder().email("author@example.com").password("x").nickname("작성자").build());
+        User reporterA = persist(User.builder().email("ra@example.com").password("x").nickname("신고A").build());
+        User reporterB = persist(User.builder().email("rb@example.com").password("x").nickname("신고B").build());
+
+        Review many = persist(Review.builder().user(author).store(store).dogAllowed(true)
+                .dogSize(DogSize.SMALL_MEDIUM).content("신고 많은 본문").demo(false).verified(true).build());
+        Review one = persist(Review.builder().user(author).store(store).dogAllowed(false)
+                .dogSize(DogSize.LARGE).content("신고 하나").demo(true).verified(true).build());
+        Review clean = persist(Review.builder().user(author).store(store).dogAllowed(true)
+                .dogSize(DogSize.LARGE).content("신고 없음").demo(false).verified(true).build());
+
+        persist(ReviewReport.builder().review(many).reporter(reporterA).reason("욕설").build());
+        persist(ReviewReport.builder().review(many).reporter(reporterB).reason("욕설").build());
+        persist(ReviewReport.builder().review(one).reporter(reporterA).reason("광고").build());
+        entityManager.flush();
+        entityManager.clear();
+
+        // 건수 많은 순. 신고 없는 리뷰는 아예 나오지 않는다.
+        Page<ReportedReviewRow> page = moderationQueryRepository.findReportedReviews(PageRequest.of(0, 20));
+        assertThat(page.getTotalElements()).isEqualTo(2);
+        assertThat(page.getContent()).extracting(ReportedReviewRow::getReviewId)
+                .containsExactly(many.getReviewId(), one.getReviewId());
+
+        ReportedReviewRow top = page.getContent().get(0);
+        assertThat(top.getReportCount()).isEqualTo(2);
+        assertThat(top.getNickname()).isEqualTo("작성자");
+        assertThat(top.getStoreName()).isEqualTo("신고 카페");
+        assertThat(top.getBlindStatus()).isEqualTo(BlindStatus.NORMAL);
+        assertThat(top.getBlindedAt()).isNull();
+        assertThat(top.getLastReportedAt()).isNotNull();
+        assertThat(page.getContent().get(1).getDemo()).isTrue();
+
+        // 같은 사유는 묶어서 센다.
+        assertThat(moderationQueryRepository.reasonsOf(many.getReviewId()))
+                .extracting(ReasonCount::getReason, ReasonCount::getCount)
+                .containsExactly(tuple("욕설", 2L));
+        assertThat(moderationQueryRepository.countReports(many.getReviewId())).isEqualTo(2);
+        assertThat(moderationQueryRepository.countReports(clean.getReviewId())).isZero();
+
+        // 상세·처리가 쓰는 조회는 가게와 작성자를 함께 들고 온다.
+        Review loaded = moderationQueryRepository.findForModeration(many.getReviewId()).orElseThrow();
+        assertThat(loaded.getStore().getName()).isEqualTo("신고 카페");
+        assertThat(loaded.getUser().getNickname()).isEqualTo("작성자");
+
+        // 임시조치 만료 조회. 30일 전에 가려진 것만 걸린다.
+        loaded.blind();
+        entityManager.flush();
+        jdbc().update("update reviews set blinded_at = now() - interval '31 days' where review_id = ?",
+                many.getReviewId());
+        entityManager.clear();
+
+        Instant threshold = Instant.now().minus(AdminModerationService.TEMPORARY_MEASURE);
+        assertThat(moderationQueryRepository.findBlindedBefore(threshold))
+                .containsExactly(many.getReviewId());
     }
 
     private <T> T persist(T entity) {

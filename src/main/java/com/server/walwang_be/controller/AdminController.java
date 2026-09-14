@@ -2,6 +2,7 @@ package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.AdminAccessLogRow;
 import com.server.walwang_be.dto.AdminPagination;
+import com.server.walwang_be.dto.AdminReportListItem;
 import com.server.walwang_be.dto.AdminUserListItem;
 import com.server.walwang_be.entity.AccessAction;
 import com.server.walwang_be.security.AccessLogEnforcementInterceptor;
@@ -9,6 +10,7 @@ import com.server.walwang_be.security.AdminAuthenticationProvider;
 import com.server.walwang_be.security.AdminOperator;
 import com.server.walwang_be.security.ClientIpResolver;
 import com.server.walwang_be.service.AccessLogService;
+import com.server.walwang_be.service.AdminModerationService;
 import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -28,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -56,6 +60,7 @@ public class AdminController {
 
     private final AdminUserService adminUserService;
     private final AdminTerminationService adminTerminationService;
+    private final AdminModerationService adminModerationService;
     private final AccessLogService accessLogService;
     private final ClientIpResolver clientIpResolver;
 
@@ -153,6 +158,89 @@ public class AdminController {
         return "redirect:/admin/users";
     }
 
+    // ── 신고와 임시조치 ────────────────────────────────────────
+
+    @GetMapping("/reports")
+    public String reports(@RequestParam(defaultValue = "0") int page,
+                          HttpServletRequest request,
+                          Authentication authentication,
+                          Model model) {
+        int pageIndex = clampPage(page);
+        audit(request, authentication, AccessAction.VIEW_REPORTS, null,
+                "신고 목록 page=" + (pageIndex + 1));
+
+        Page<AdminReportListItem> reports = adminModerationService.listReports(pageIndex);
+        model.addAttribute("title", "신고");
+        model.addAttribute("reports", reports.getContent());
+        model.addAttribute("temporaryMeasureDays", AdminModerationService.TEMPORARY_MEASURE.toDays());
+        model.addAttribute("pagination", AdminPagination.of(reports, target -> UriComponentsBuilder
+                .fromPath("/admin/reports")
+                .queryParam("page", target)
+                .encode()
+                .toUriString()));
+        return "admin/reports";
+    }
+
+    /**
+     * 신고된 리뷰 상세. 이 화면만 리뷰 본문과 사진을 보여준다 —
+     * 약관 11조의 판단 대상이 본문과 사진이라 보지 않고는 정할 수 없다.
+     * 그래서 대상 회원(작성자)과 함께 남긴다. 판단 근거는 docs/admin-access-log.md 참고.
+     */
+    @GetMapping("/reports/{reviewId}")
+    public String reportedReview(@PathVariable UUID reviewId,
+                                 HttpServletRequest request,
+                                 Authentication authentication,
+                                 Model model) {
+        // 기록이 먼저다. 대상 회원은 아직 모르므로(리뷰를 읽어야 안다) 리뷰 id를 detail에 남긴다.
+        audit(request, authentication, AccessAction.VIEW_REPORTED_REVIEW, null,
+                "신고 리뷰 상세(본문·사진 포함) 리뷰 " + reviewId);
+
+        model.addAttribute("title", "신고 리뷰");
+        model.addAttribute("review", adminModerationService.getReportedReview(reviewId));
+        return "admin/reported-review";
+    }
+
+    /**
+     * 임시조치와 해제. 되돌릴 수 있는 작업이라 확인 단계는 두지 않고, 사유만 받는다.
+     *
+     * 해지와 같은 이유로 audit(...)을 쓰지 않는다 — 기록은 서비스가 상태 변경·재집계와
+     * 같은 트랜잭션에서 남긴다.
+     */
+    @PostMapping("/reports/{reviewId}/blind")
+    public String blindReview(@PathVariable UUID reviewId,
+                              @RequestParam String reason,
+                              HttpServletRequest request,
+                              Authentication authentication,
+                              RedirectAttributes redirect) {
+        return applyModeration(reviewId, reason, request, authentication, redirect, true);
+    }
+
+    @PostMapping("/reports/{reviewId}/unblind")
+    public String unblindReview(@PathVariable UUID reviewId,
+                                @RequestParam String reason,
+                                HttpServletRequest request,
+                                Authentication authentication,
+                                RedirectAttributes redirect) {
+        return applyModeration(reviewId, reason, request, authentication, redirect, false);
+    }
+
+    private String applyModeration(UUID reviewId, String reason, HttpServletRequest request,
+                                   Authentication authentication, RedirectAttributes redirect,
+                                   boolean blind) {
+        String operator = AdminOperator.require(authentication);
+        String ip = clientIpResolver.resolve(request);
+
+        AdminModerationService.Applied applied = blind
+                ? adminModerationService.blind(reviewId, reason, operator, ip)
+                : adminModerationService.unblind(reviewId, reason, operator, ip);
+        AccessLogEnforcementInterceptor.markRecorded(request);
+
+        redirect.addFlashAttribute("moderated", (blind ? "블라인드" : "블라인드 해제") + " 처리했습니다.");
+        redirect.addFlashAttribute("moderatedStore", applied.storeName());
+        redirect.addFlashAttribute("moderatedCounted", applied.countedReviews());
+        return "redirect:/admin/reports";
+    }
+
     /**
      * 접속기록 열람도 기록한다. 화면에 다른 관리자의 IP와 정보주체 id가 나오고,
      * 특정 회원으로 거르면 "누가 그 사람을 봤는지"를 조회하는 셈이라 대상도 함께 남긴다.
@@ -160,11 +248,13 @@ public class AdminController {
     @GetMapping("/access-logs")
     public String accessLogs(@RequestParam(required = false) String operator,
                              @RequestParam(required = false) UUID targetUserId,
+                             @RequestParam(required = false) String action,
                              @RequestParam(defaultValue = "0") int page,
                              HttpServletRequest request,
                              Authentication authentication,
                              Model model) {
         String operatorFilter = AdminOperator.sanitize(operator);
+        AccessAction actionFilter = parseAction(action);
         int pageIndex = clampPage(page);
 
         StringBuilder detail = new StringBuilder("접속기록 열람 page=").append(pageIndex + 1);
@@ -174,22 +264,58 @@ public class AdminController {
         if (targetUserId != null) {
             detail.append(" targetUserId=").append(targetUserId);
         }
+        if (actionFilter != null) {
+            detail.append(" action=").append(actionFilter.name());
+        }
         audit(request, authentication, AccessAction.VIEW_ACCESS_LOG, targetUserId, detail.toString());
 
-        Page<AdminAccessLogRow> logs = accessLogService.find(operatorFilter, targetUserId, pageIndex);
+        Page<AdminAccessLogRow> logs =
+                accessLogService.find(operatorFilter, targetUserId, actionFilter, pageIndex);
         model.addAttribute("title", "접속기록");
         model.addAttribute("operatorFilter", operatorFilter);
         model.addAttribute("targetUserIdFilter", targetUserId == null ? "" : targetUserId.toString());
+        model.addAttribute("actionFilter", actionFilter == null ? "" : actionFilter.name());
+        model.addAttribute("actionOptions", actionOptions(actionFilter));
         model.addAttribute("logs", logs.getContent());
         model.addAttribute("pagination", AdminPagination.of(logs, target -> UriComponentsBuilder
                 .fromPath("/admin/access-logs")
                 .queryParamIfPresent("operator",
                         operatorFilter.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(operatorFilter))
                 .queryParamIfPresent("targetUserId", java.util.Optional.ofNullable(targetUserId))
+                .queryParamIfPresent("action", java.util.Optional.ofNullable(actionFilter).map(Enum::name))
                 .queryParam("page", target)
                 .encode()
                 .toUriString()));
         return "admin/access-logs";
+    }
+
+    /**
+     * 수행업무 필터. 모르는 값은 거르지 않는 것으로 본다.
+     *
+     * 400으로 끊지 않는 이유는 계정 필터(AdminOperator.sanitize)와 같다 — 링크를 잘못 고친 정도로
+     * 화면을 닫을 이유가 없고, 필터가 무시됐다는 것은 선택 상자가 "전체"로 돌아온 것으로 드러난다.
+     */
+    private static AccessAction parseAction(String action) {
+        if (action == null || action.isBlank()) {
+            return null;
+        }
+        for (AccessAction candidate : AccessAction.values()) {
+            if (candidate.name().equals(action.strip())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** 선택 상자에 넣을 값들. 지금 고른 것에 selected를 달아 돌려준다. */
+    private static List<ActionOption> actionOptions(AccessAction selected) {
+        return Arrays.stream(AccessAction.values())
+                .map(action -> new ActionOption(action.name(), action.label(), action == selected))
+                .toList();
+    }
+
+    /** Mustache가 쓰는 선택 상자 한 줄. */
+    public record ActionOption(String value, String label, boolean selected) {
     }
 
     /**

@@ -10,6 +10,7 @@ import com.server.walwang_be.security.JwtAuthenticationEntryPoint;
 import com.server.walwang_be.security.JwtProvider;
 import com.server.walwang_be.security.TotpVerifier;
 import com.server.walwang_be.service.AccessLogService;
+import com.server.walwang_be.service.AdminModerationService;
 import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +58,7 @@ abstract class AdminWebTestSupport {
     static final String PASSWORD = "correct horse battery staple";
     static final String TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
     static final String ALLOWED_IP = "203.0.113.10";
+    static final String SUPABASE_URL = "https://testproject.supabase.co";
     static final String OUTSIDE_IP = "198.51.100.7";
 
     /** 앱 회원이 로그인해서 받은 Access Token이라고 치는 값. JwtProvider를 목으로 두고 이 값만 통과시킨다. */
@@ -75,6 +77,8 @@ abstract class AdminWebTestSupport {
         registry.add("admin.accounts[0].bcrypt", () -> PASSWORD_HASH);
         registry.add("admin.accounts[0].totp", () -> TOTP_SECRET);
         registry.add("admin.allowlist", () -> ALLOWED_IP);
+        // 신고 리뷰 상세가 사진을 보여주려면 이 오리진이 CSP img-src 에 들어가야 한다.
+        registry.add("supabase.url", () -> SUPABASE_URL);
     }
 
     @Autowired
@@ -86,6 +90,8 @@ abstract class AdminWebTestSupport {
     AdminUserService adminUserService;
     @MockitoBean
     AdminTerminationService adminTerminationService;
+    @MockitoBean
+    AdminModerationService adminModerationService;
     @MockitoBean
     AdminLoginAttemptRepository loginAttempts;
     @MockitoBean
