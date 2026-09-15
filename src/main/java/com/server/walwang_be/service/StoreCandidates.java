@@ -111,6 +111,7 @@ public class StoreCandidates {
                     store.getType(),
                     store.getLat(),
                     store.getLng(),
+                    store.displayAddress(demo),
                     i + 1,
                     availability(status),
                     status == null ? 0 : status.getPossibleCount() + status.getImpossibleCount(),
