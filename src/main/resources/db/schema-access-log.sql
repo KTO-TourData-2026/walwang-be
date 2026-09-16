@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS access_log (
     CONSTRAINT ck_access_log_action CHECK (action IN (
         'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'TOTP_FAILURE', 'LOGIN_LOCKED', 'LOGOUT',
         'LIST_USERS', 'SEARCH_USERS', 'VIEW_USER', 'VIEW_ACCESS_LOG', 'TERMINATE_USER',
-        'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW'
+        'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW',
+        'RECOMPUTE_STORE', 'RECOMPUTE_ALL'
     ))
 );
 
@@ -50,7 +51,9 @@ ALTER TABLE access_log ADD CONSTRAINT ck_access_log_action CHECK (action IN (
     -- 2026-09-14 추가. 관리자 페이지의 이용계약 해지(약관 14조 5항).
     'TERMINATE_USER',
     -- 2026-09-14 추가. 신고 조회와 리뷰 임시조치(약관 10조·11조).
-    'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW'
+    'VIEW_REPORTS', 'VIEW_REPORTED_REVIEW', 'BLIND_REVIEW', 'UNBLIND_REVIEW',
+    -- 2026-09-16 추가. 점수 재집계를 /internal 에서 관리자 페이지로 옮겼다.
+    'RECOMPUTE_STORE', 'RECOMPUTE_ALL'
 ));
 
 -- 접속기록 열람(최신순)과 보관 기간 정리
@@ -139,7 +142,12 @@ $$;
 --   -- anon, authenticated 가 없어야 한다.
 --
 --   SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_access_log_action';
---   -- 목록에 TERMINATE_USER, BLIND_REVIEW 가 있어야 한다. 없으면 위 ALTER 블록을 돌린다.
+--   -- 목록에 TERMINATE_USER, BLIND_REVIEW, RECOMPUTE_ALL 이 있어야 한다. 없으면 위 ALTER 블록을 돌린다.
+--
+-- 재집계 이력 (사유가 detail 에 들어 있다. RECOMPUTE_ALL 은 실행 요청 시각이다)
+--   SELECT accessed_at AT TIME ZONE 'Asia/Seoul' AS kst, operator, ip, action, detail
+--     FROM access_log WHERE action IN ('RECOMPUTE_STORE', 'RECOMPUTE_ALL')
+--    ORDER BY accessed_at DESC;
 --
 -- 리뷰 임시조치 이력 (사유가 detail 에 들어 있다)
 --   SELECT accessed_at AT TIME ZONE 'Asia/Seoul' AS kst, operator, action, target_user_id, detail

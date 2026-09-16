@@ -219,6 +219,70 @@ class AdminSecurityTest extends AdminWebTestSupport {
         verifyNoInteractions(adminModerationService);
     }
 
+    // ── 점수 재집계 (예전 /internal, 앱 로그인만으로 부를 수 있었다) ─────────────
+
+    @Test
+    void CSRF_토큰이_없는_재집계_요청은_처리하지_않는다() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", UUID.randomUUID().toString()).param("reason", "목 리뷰 적재")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(adminRecomputeService);
+    }
+
+    @Test
+    void 로그인하지_않으면_재집계를_볼_수도_실행할_수도_없다() throws Exception {
+        mockMvc.perform(get("/admin/recompute").with(fromAllowedIp()))
+                .andExpect(redirectedUrl("/admin/login"));
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", UUID.randomUUID().toString()).param("reason", "목 리뷰 적재")
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+
+        verifyNoInteractions(adminRecomputeService, accessLogService);
+    }
+
+    /**
+     * 옮긴 이유 그 자체. 앱 회원의 JWT는 관리자 체인에서 아무 권한도 만들지 않는다
+     * (관리자 체인에 JWT 필터가 없고, 서블릿 필터 등록도 꺼져 있다 — AdminJwtIsolationTest).
+     */
+    @Test
+    void 앱_회원_JWT로는_재집계를_실행할_수_없다() throws Exception {
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + APP_TOKEN)
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", UUID.randomUUID().toString()).param("reason", "목 리뷰 적재")
+                        .header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + APP_TOKEN)
+                        .with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/login"));
+
+        verifyNoInteractions(adminRecomputeService, accessLogService);
+    }
+
+    @Test
+    void 허용목록_밖에서는_재집계_요청도_404() throws Exception {
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .with(viaNginx(OUTSIDE_IP)).with(csrf()))
+                .andExpect(status().isNotFound());
+
+        verifyNoInteractions(adminRecomputeService);
+    }
+
     @Test
     void 로그인하지_않으면_신고를_볼_수도_처리할_수도_없다() throws Exception {
         mockMvc.perform(get("/admin/reports").with(fromAllowedIp()))

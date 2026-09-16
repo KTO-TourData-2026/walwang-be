@@ -11,6 +11,7 @@ import com.server.walwang_be.security.JwtProvider;
 import com.server.walwang_be.security.TotpVerifier;
 import com.server.walwang_be.service.AccessLogService;
 import com.server.walwang_be.service.AdminModerationService;
+import com.server.walwang_be.service.AdminRecomputeService;
 import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +93,8 @@ abstract class AdminWebTestSupport {
     AdminTerminationService adminTerminationService;
     @MockitoBean
     AdminModerationService adminModerationService;
+    @MockitoBean
+    AdminRecomputeService adminRecomputeService;
     @MockitoBean
     AdminLoginAttemptRepository loginAttempts;
     @MockitoBean

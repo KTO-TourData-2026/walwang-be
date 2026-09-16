@@ -132,8 +132,11 @@ psql "<새 연결문자열>" -f stores.sql
 
 ```
 1) backfill-passport-demo.sql          도장(passports) 행을 채운다
-2) POST /internal/stores/recompute-all?demo=true    시연 축 점수·태그를 다시 센다
+2) 관리자 페이지 → 재집계 → 전체 재집계   점수·태그를 두 축 모두 다시 센다
 ```
+
+2번은 `schema-access-log.sql` 이 이 프로젝트에 적용돼 있어야 한다 — 재집계가 접속기록을 남기고,
+CHECK 제약에 `RECOMPUTE_ALL` 이 없으면 시작하지 않는다.
 
 ## 검증
 

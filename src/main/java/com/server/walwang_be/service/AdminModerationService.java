@@ -35,8 +35,9 @@ import java.util.stream.Collectors;
  * 재집계 API 를 손으로 불러야 했고, 빠뜨리면 목록에서 사라진 리뷰가 점수에는 그대로 남았다.
  * 여기서 함께 부르므로 빠뜨릴 자리가 없다.
  *
- * <p>재계산의 축(demo)은 리뷰 자신의 값을 쓴다. store_size_status 는 (가게, 크기)당 한 행뿐이라
- * 시연용과 실제용이 같은 자리를 쓰는데, 목 리뷰를 가린 뒤 demo=false 로 부르면 엉뚱한 축을 0으로 덮는다.
+ * <p>재계산의 축(demo)은 리뷰 자신의 값을 쓴다. store_size_status 는 is_demo 로 행이 나뉘어 있고
+ * 재집계는 부른 축의 행만 고친다. 목 리뷰를 가린 뒤 demo=false 로 부르면 시연 축은 그대로라
+ * 가린 리뷰가 시연 점수에 계속 남는다.
  */
 @Service
 @RequiredArgsConstructor

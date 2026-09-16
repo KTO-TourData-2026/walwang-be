@@ -42,7 +42,7 @@
 
 아래는 대체 수단이다. **이 경로로 하면 접속기록이 남지 않고 재집계도 돌지 않는다** —
 `docs/admin-access-log.md` 운영 규칙 2번(대시보드 작업은 작업 대장에 남긴다)이 그대로 적용되고,
-3번 재집계를 반드시 손으로 불러야 한다.
+3번 재집계를 관리자 페이지에서 반드시 따로 실행해야 한다.
 
 ### ⚠️ SQL 로 할 때는 두 단계다. 2번을 잊으면 집계가 어긋난다
 
@@ -105,62 +105,93 @@ UPDATE reviews
 
 ### 3. 재집계 — 빼먹지 말 것
 
-```
-POST /internal/stores/{storeId}/recompute
-Authorization: Bearer <accessToken>
-```
+`/admin` → **재집계** → **가게 하나**.
 
-응답에 크기별 점수·건수가 들어 있다. `countedReviews`가 집계에 실제로 쓰인
-리뷰 수이니, 가린 만큼 줄었는지 확인한다.
+1. 가게 ID(위에서 챙긴 `store_id`)와 처리 사유(예: `리뷰 <review_id> SQL 삭제 확정`)를 넣는다.
+2. **이 가게 재집계**를 누른다.
+3. 완료 안내의 `집계에 쓰인 리뷰는 실제 N건, 시연 M건`이 가린 만큼 줄었는지 확인한다.
 
-```json
-{
-  "storeId": "...",
-  "storeName": "...",
-  "countedReviews": 3,
-  "sizes": [
-    { "size": "SMALL_MEDIUM", "status": "POSSIBLE",
-      "possibleScore": 2.7, "impossibleScore": 0.0,
-      "possibleCount": 3, "impossibleCount": 0, "lastVerifiedAt": "..." }
-  ]
-}
-```
+해제(NORMAL 복귀)할 때도 똑같이 실행해야 점수가 돌아온다.
+실행은 `RECOMPUTE_STORE` + 사유로 접속기록에 남는다(재집계와 같은 트랜잭션).
+없는 가게 ID면 404 화면이 나오고 아무것도 기록되지 않는다.
 
-해제(NORMAL 복귀)할 때도 똑같이 불러야 점수가 돌아온다.
-
-재집계는 AI 임베딩 갱신(`POST /internal/embedding/refresh`)도 함께 알린다 —
+재집계는 AI 임베딩 갱신도 함께 알린다 —
 가려진 리뷰의 문장이 임베딩에 남아 있으면 화면에서 지운 표현으로 그 가게가 검색된다.
-비동기라 응답을 기다리지 않고, 실패해도 재집계는 성공으로 끝난다(서버 로그에만 남는다).
-`demo=true`로 부를 때는 알리지 않는다 — 목 데이터의 임베딩은 AI팀이 직접 채운다.
+비동기라 기다리지 않고, 실패해도 재집계는 성공으로 끝난다(서버 로그에만 남는다).
+실제 축을 셀 때만 알린다 — 목 데이터의 임베딩은 AI팀이 직접 채운다.
 
-## 목 리뷰를 DB에 직접 넣었을 때
+## 목 리뷰를 DB에 직접 넣거나 지웠을 때
 
-리뷰를 SQL로 넣으면 등록 경로를 타지 않아 재집계가 돌지 않는다.
-가게마다 부르지 말고 한 번에 끝낸다.
+리뷰를 SQL로 넣거나 지우면 등록·삭제 경로를 타지 않아 재집계가 돌지 않는다.
+가게마다 실행하지 말고 한 번에 끝낸다.
 
+`/admin` → **재집계** → **전체 재집계**.
+
+1. 처리 사유(예: `시연용 목 리뷰 적재 2026-09-16`)를 넣고 **전체 재집계 시작**을 누른다.
+2. 곧바로 같은 화면으로 돌아오고 `실행 중입니다`가 보인다. 백그라운드에서 돈다.
+3. 몇 분 뒤 화면을 새로 고친다. **마지막 실행**에 축별 대상 / 성공 / 실패 건수와
+   실패한 가게 ID(앞쪽 20개까지)가 나온다. 나머지는 서버 로그(`재집계 실패: store=…`)에 있다.
+
+- 한 가게가 실패해도 나머지는 끝까지 돈다. 실패한 가게는 **가게 하나**로 다시 실행한다.
+- 한 번에 하나만 돈다. 도는 중에는 시작 버튼이 사라지고, 겹친 요청은 400으로 거절된다.
+- 접속기록에는 시작할 때 `RECOMPUTE_ALL`(실행 요청) + 사유가 남는다. 결과는 기록에 없다 —
+  화면과 서버 로그(`일괄 재집계(demo=…): 대상 …곳, 성공 …곳, 실패 …곳`)에서 본다.
+- **마지막 실행은 서버 메모리에만 있다.** 재시작하면 화면에서 사라진다(서버 로그에는 남는다).
+- 도중에 서버가 재시작되면 그때까지 센 가게는 커밋돼 있다. 다시 실행하면 된다.
+- `마지막 실행`에 **작업이 중간에 멈췄습니다**가 보이면 가게 단위가 아니라 작업 전체가 실패한 것이다
+  (대상 조회 실패 등). 서버 로그를 보고 다시 실행한다.
+
+### 전체 재집계의 대상
+
+7,152곳 전부를 돌지 않는다. 축(실제/시연)마다 아래 둘 중 하나에 해당하는 가게만 센다.
+
+1. 그 축에 집계될 리뷰(인증 · 정상 노출)가 있는 가게
+2. 그 축의 `store_size_status` 나 `store_tags` 에 **0이 아닌 값이 남은** 가게
+   (점수·건수 ≠ 0, `last_verified_at` 있음, 태그 수 ≠ 0)
+
+2번이 목 리뷰를 심사 후 SQL로 지운 경우를 잡는다. 리뷰가 하나도 없는 가게는 **행을 지우지 않고**
+점수·건수를 0, `last_verified_at` 을 NULL, 태그 수를 0 으로 되돌린다 — 행이 없으면 앱이 크기별 상태를
+빈 배열로 받아 아무것도 그리지 못한다(`db/seed-store-size-status.sql`).
+한 번 0으로 돌아간 가게는 다음 실행부터 대상에서 빠진다.
+
+모든 리뷰가 가려진(블라인드) 가게도 2번으로 잡혀 0으로 돌아간다.
+
+실행 전에 대상 수를 보려면 (가게 데이터만 읽는다):
+
+```sql
+SELECT d.is_demo, count(*) AS targets FROM (
+  SELECT store_id, is_demo FROM reviews WHERE verified AND blind_status = 'NORMAL'
+  UNION
+  SELECT store_id, is_demo FROM store_size_status
+   WHERE possible_score <> 0 OR impossible_score <> 0 OR possible_count <> 0
+      OR impossible_count <> 0 OR last_verified_at IS NOT NULL
+  UNION
+  SELECT store_id, is_demo FROM store_tags WHERE count <> 0
+) d GROUP BY d.is_demo;
 ```
-POST /internal/stores/recompute-all?demo=true
-Authorization: Bearer <accessToken>
-```
 
-`demo`는 어느 쪽 리뷰로 집계할지 정한다. 생략하면 `false`(실제 리뷰)다.
-목 리뷰는 `is_demo = true`로 들어가므로 **`demo=true`를 빼먹으면 점수가 0으로 덮인다.**
+### 시연 축과 실제 축
 
-응답에 `total` / `succeeded` / `failed` / `elapsedMs` / `failures[]`가 담긴다.
-한 가게가 실패해도 나머지는 끝까지 돌고, 실패한 가게 id가 `failures`에 남는다.
+`store_size_status`와 `store_tags`는 `is_demo`로 행이 나뉘어 있다(`db/schema-store-size-status-demo.sql`,
+`db/schema-store-aggregate-demo.sql`). 한 축을 다시 세도 다른 축의 행은 건드리지 않는다.
 
-### ⚠️ 시연용과 실제용은 같은 자리를 쓴다
+관리자 재집계는 **언제나 두 축을 모두** 센다. 고르는 칸이 없다.
 
-`store_size_status`는 (가게, 크기)당 한 행뿐이라 두 벌을 담지 못한다.
-`demo=true`로 돌리면 목 리뷰로 계산한 값이 실제 리뷰 기준 점수를 **덮어쓴다.**
+- 목 리뷰(`is_demo = true`)를 넣었으면 시연 축이, 실제 리뷰를 고쳤으면 실제 축이 바뀐다.
+  다른 축은 다시 세도 값이 그대로다 — 재집계는 저장된 리뷰를 다시 세는 것이라 몇 번 돌려도 같다.
+- 예전 `/internal` API는 `demo` 값을 사람이 골라야 했다. 잘못 고르면 덮어쓰지는 않지만
+  **고친 축이 다시 세어지지 않아** 반영이 안 된 채로 남았다. 두 축을 함께 세면 그 실수가 생기지 않는다.
 
-실제 리뷰가 0건인 동안은 문제가 없다. 실제 리뷰가 쌓이기 시작하면
-`store_size_status`에 `is_demo`를 두고 행을 나눠야 한다.
+신고 화면의 블라인드·해제는 그 리뷰의 축만 센다(리뷰 하나가 속한 축은 하나다).
 
 ## 알아둘 것
 
-- **`sizes`가 빈 배열이면** 그 가게에 `store_size_status` 행이 없다는 뜻이다.
-  집계 대상 자체가 없으니 `db/seed-store-size-status.sql`을 먼저 돌린다.
+- **재집계를 했는데 앱의 등급이 계속 비어 있으면** 그 가게에 `store_size_status` 행이 없을 수 있다.
+  재집계는 있는 행만 고친다. `db/seed-store-size-status.sql`을 먼저 돌리고 다시 실행한다.
+  ```sql
+  SELECT size, is_demo, possible_count, impossible_count FROM store_size_status
+   WHERE store_id = '<store_id>' ORDER BY is_demo, size;   -- 4행이어야 한다
+  ```
 - **사진은 남는다.** 블라인드는 노출만 끊고 Supabase 파일은 지우지 않는다.
   사진 자체가 문제라면 스토리지에서 따로 지운다. 관리자 페이지의 신고 상세에서 그 사진을 볼 수 있다.
 - **본인 삭제는 다르다.** 사용자가 `DELETE /reviews/{reviewId}`로 지우면
@@ -177,9 +208,10 @@ Authorization: Bearer <accessToken>
 
 ## 권한
 
-현재 `/internal/**`은 **로그인만 하면 누구나** 부를 수 있다.
-권한이 `ROLE_USER` 하나뿐이라 관리자 구분이 없다.
+재집계는 **관리자 페이지에서만** 실행한다. IP 허용목록 + 계정 + OTP 로 들어간 세션이어야 하고,
+실행마다 계정·IP·사유가 접속기록에 남는다(`docs/admin-access-log.md` "12. 점수 재집계").
 
-재집계는 저장된 리뷰를 다시 세는 것이라 값을 조작하지는 못하지만,
-`ROLE_ADMIN`이 생기면 `/admin` 아래로 옮기고 조여야 한다.
-`InternalController`에 TODO로 남겨뒀다.
+예전 `POST /internal/stores/{storeId}/recompute` 와 `POST /internal/stores/recompute-all` 은 **없앴다.**
+앱에 로그인한 회원이면 누구나 부를 수 있었고, 기록도 남지 않았다.
+지금 그 주소는 앱 API 체인에서 없는 주소로 끝난다(토큰이 없으면 401, 있으면 404/405).
+재집계는 일어나지 않는다. curl 로 실행하는 경로는 없다.

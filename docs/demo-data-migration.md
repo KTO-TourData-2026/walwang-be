@@ -373,9 +373,10 @@ SELECT count(*) FROM reviews
 마지막으로 시연 축 점수를 채운다. SQL 로 넣은 리뷰는 등록 경로를 타지 않아 집계가 비어 있다.
 
 ```
-POST /internal/stores/recompute-all?demo=true
+관리자 페이지 → 재집계 → 전체 재집계   (실제·시연 두 축을 함께 센다)
 ```
 
+화면을 새로 고쳐 **마지막 실행**의 시연 축 실패가 0인지 본다(`docs/admin-runbook.md` "목 리뷰를 DB에 직접 넣었을 때").
 그 다음 앱에서 `demo=true` 로 가게 상세와 여권을 열어 눈으로 확인한다.
 
 ---
@@ -402,4 +403,13 @@ COMMIT;
 ```
 
 이 경우 Storage 파일은 남는다. 앱이 지우는 경로를 타지 않기 때문이다 — 1-C 의 경로 목록으로 직접 지워야 한다.
-지운 뒤에는 `POST /internal/stores/recompute-all?demo=true` 로 집계를 맞춘다.
+지운 뒤에는 관리자 페이지 `재집계 → 전체 재집계`로 집계를 맞춘다.
+목 리뷰가 모두 지워진 가게도 대상에 들어간다 — 전체 재집계는 리뷰가 있는 가게와 함께
+**시연 축 점수·태그가 0이 아닌 가게**도 다시 세어, 리뷰가 없으면 행을 남긴 채 0으로 되돌린다.
+끝난 뒤 남은 값이 없는지 확인한다.
+
+```sql
+SELECT count(*) FROM store_size_status
+ WHERE is_demo AND (possible_count <> 0 OR impossible_count <> 0 OR last_verified_at IS NOT NULL);  -- 0
+SELECT count(*) FROM store_tags WHERE is_demo AND count <> 0;                                        -- 0
+```

@@ -61,4 +61,22 @@ public class AsyncConfig {
         return executor;
     }
 
+    /**
+     * 관리자 전체 재집계용. 스레드 하나, 대기열 없음.
+     *
+     * 전체 재집계는 가게 수만큼 DB를 오가서 요청 스레드에 두면 nginx 타임아웃에 걸린다.
+     * 동시에 두 번 돌 이유가 없어 하나만 둔다 — 겹치는 요청은 AdminRecomputeService가 먼저 거절하고,
+     * 그래도 들어오면 여기서 RejectedExecutionException으로 끝난다(조용히 버리지 않는다).
+     */
+    @Bean("adminJobExecutor")
+    public Executor adminJobExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(0);
+        executor.setThreadNamePrefix("admin-job-");
+        executor.initialize();
+        return executor;
+    }
+
 }

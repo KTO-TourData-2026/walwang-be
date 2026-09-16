@@ -84,17 +84,36 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             UUID userId, boolean demo, BlindStatus blindStatus);
 
     /**
-     * 리뷰가 하나라도 달린 가게의 id.
+     * 한 축(demo)에서 다시 세면 값이 달라질 수 있는 가게의 id. 일괄 재집계 대상이다.
      *
-     * 일괄 재집계 대상을 고르는 데 쓴다. 가게 7천 건을 전부 도는 대신
-     * 리뷰가 있는 곳만 추린다 — 리뷰가 없으면 다시 세도 결과가 같다.
+     * 가게 7천 건을 전부 도는 대신 두 부류만 추린다.
+     *   1. 그 축에 집계될 리뷰(인증·정상 노출)가 있는 가게 — 리뷰로부터 값을 다시 계산한다.
+     *   2. 그 축의 store_size_status 나 store_tags 에 0이 아닌 값이 남은 가게 — 리뷰가 SQL로 지워졌거나
+     *      모두 가려져 1번에서 빠졌어도, 옛 점수·태그가 남아 있으면 다시 세어 0으로 되돌려야 한다.
+     * 둘 다 아닌 가게는 리뷰도 없고 값도 전부 0이라 다시 세도 결과가 같다.
      *
-     * 인증을 거치지 않은 리뷰는 어차피 집계에 들어가지 않으므로 대상에서도 뺀다.
+     * 2번이 한 번 0으로 돌아가면 다음 실행부터는 대상에서 빠진다 — 대상이 계속 불어나지 않는다.
+     * last_verified_at 도 본다. 리뷰가 없으면 재집계가 null 로 되돌리는 값이라 남아 있으면 옛 흔적이다.
+     *
+     * 세 테이블에 걸쳐 UNION 이 필요해 네이티브 쿼리로 둔다. UNION 이 중복을 없앤다.
+     * 'NORMAL' 은 BlindStatus.NORMAL 의 저장 값(EnumType.STRING)이다.
      */
-    @Query("""
-            select distinct r.store.storeId from Review r
-             where r.blindStatus = :blindStatus
+    @Query(value = """
+            select r.store_id from reviews r
+             where r.is_demo = :demo
                and r.verified = true
-            """)
-    List<UUID> findStoreIdsWithReviews(@Param("blindStatus") BlindStatus blindStatus);
+               and r.blind_status = 'NORMAL'
+            union
+            select s.store_id from store_size_status s
+             where s.is_demo = :demo
+               and (s.possible_score <> 0 or s.impossible_score <> 0
+                    or s.possible_count <> 0 or s.impossible_count <> 0
+                    or s.last_verified_at is not null)
+            union
+            select t.store_id from store_tags t
+             where t.is_demo = :demo
+               and t.count <> 0
+            order by 1
+            """, nativeQuery = true)
+    List<UUID> findRecomputeTargets(@Param("demo") boolean demo);
 }

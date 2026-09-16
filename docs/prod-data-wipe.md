@@ -270,8 +270,7 @@ SELECT string_agg(
 리뷰로부터 다시 계산된다. 복사보다 어긋날 여지가 없다.
 
 ```
-POST /internal/stores/recompute-all
-POST /internal/stores/recompute-all?demo=true
+개발 서버 관리자 페이지 → 재집계 → 전체 재집계   (실제·시연 두 축을 함께 센다)
 ```
 
 ### 1-13. store_tags
@@ -584,9 +583,11 @@ COMMIT;
 삭제 후 재집계를 돌린다.
 
 ```
-POST /internal/stores/recompute-all
-POST /internal/stores/recompute-all?demo=true
+운영 관리자 페이지 → 재집계 → 전체 재집계   (실제·시연 두 축을 함께 센다)
 ```
+
+리뷰가 전부 지워진 가게도 대상에 들어간다 — 전체 재집계는 리뷰가 있는 가게와 함께 점수·태그가
+0이 아닌 가게도 다시 세어, 리뷰가 없으면 행을 남긴 채 0으로 되돌린다(`docs/admin-runbook.md` "전체 재집계의 대상").
 
 ### 4-4. Storage 파일 삭제
 

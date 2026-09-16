@@ -13,6 +13,9 @@ import com.server.walwang_be.entity.SavedCourse;
 import com.server.walwang_be.entity.SavedStore;
 import com.server.walwang_be.entity.StampStatus;
 import com.server.walwang_be.entity.Store;
+import com.server.walwang_be.entity.StoreSizeStatus;
+import com.server.walwang_be.entity.StoreTag;
+import com.server.walwang_be.entity.StoreTagCount;
 import com.server.walwang_be.entity.TermCode;
 import com.server.walwang_be.entity.User;
 import com.server.walwang_be.entity.UserAgreement;
@@ -44,6 +47,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -112,6 +117,8 @@ class AdminPostgresTest {
     AdminModerationQueryRepository moderationQueryRepository;
     @Autowired
     AccessLogRepository accessLogRepository;
+    @Autowired
+    ReviewRepository reviewRepository;
     @Autowired
     EntityManager entityManager;
     @Autowired
@@ -365,6 +372,77 @@ class AdminPostgresTest {
         Instant threshold = Instant.now().minus(AdminModerationService.TEMPORARY_MEASURE);
         assertThat(moderationQueryRepository.findBlindedBefore(threshold))
                 .containsExactly(many.getReviewId());
+    }
+
+    /**
+     * 일괄 재집계 대상. 세 테이블을 UNION 하는 네이티브 쿼리라 여기서 실제로 돌려 본다.
+     * 리뷰가 모두 사라졌어도 옛 값이 남은 가게는 대상이어야 하고, 전부 0인 가게는 빠져야 한다.
+     */
+    @Test
+    void 일괄_재집계_대상은_리뷰가_있거나_옛_값이_남은_가게다() {
+        User author = persist(User.builder().email("recompute@example.com").password("x").nickname("집계").build());
+        Store withReview = recomputeStore("rc-review");
+        Store staleScore = recomputeStore("rc-stale-score");
+        Store staleVerifiedAt = recomputeStore("rc-stale-verified-at");
+        Store staleDemoTag = recomputeStore("rc-stale-demo-tag");
+        Store allZero = recomputeStore("rc-zero");
+        Store onlyBlinded = recomputeStore("rc-blinded");
+        Store onlyUnverified = recomputeStore("rc-unverified");
+
+        // 1) 집계될 리뷰가 있다 (실제 축)
+        persist(Review.builder().user(author).store(withReview).dogAllowed(true)
+                .dogSize(DogSize.SMALL_MEDIUM).demo(false).verified(true).build());
+        // 2) 리뷰는 없는데 실제 축 점수가 남았다
+        sizeRows(staleScore).forEach(row -> {
+            if (!row.isDemo() && row.getSize() == DogSize.LARGE) {
+                row.applyRecomputed(0.0, 1.7, 0, 2, Instant.now());
+            }
+        });
+        // 3) 건수·점수는 0인데 마지막 확인 시각만 남았다
+        sizeRows(staleVerifiedAt).forEach(row -> {
+            if (!row.isDemo() && row.getSize() == DogSize.SMALL_MEDIUM) {
+                row.applyRecomputed(0, 0, 0, 0, Instant.now());
+            }
+        });
+        // 4) 시연 축 태그만 남았다
+        StoreTagCount tag = persist(StoreTagCount.builder().store(staleDemoTag).tag(StoreTag.WIDE_YARD).demo(true).build());
+        tag.applyRecomputed(3);
+        // 5) 전부 0, 리뷰 없음
+        sizeRows(allZero);
+        persist(StoreTagCount.builder().store(allZero).tag(StoreTag.FENCED).demo(false).build());
+        // 6) 가려진 리뷰뿐, 값은 0 — 다시 세도 0이다
+        sizeRows(onlyBlinded);
+        persist(Review.builder().user(author).store(onlyBlinded).dogAllowed(false)
+                .dogSize(DogSize.LARGE).demo(false).verified(true).build()).blind();
+        // 7) 미인증 리뷰뿐, 값은 0
+        sizeRows(onlyUnverified);
+        persist(Review.builder().user(author).store(onlyUnverified).dogAllowed(false)
+                .dogSize(DogSize.LARGE).demo(false).verified(false).build());
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(reviewRepository.findRecomputeTargets(false))
+                .containsExactlyInAnyOrder(withReview.getStoreId(), staleScore.getStoreId(),
+                        staleVerifiedAt.getStoreId())
+                .doesNotHaveDuplicates();
+        assertThat(reviewRepository.findRecomputeTargets(true))
+                .containsExactly(staleDemoTag.getStoreId());
+    }
+
+    private Store recomputeStore(String externalId) {
+        return persist(Store.builder().externalId(externalId).name(externalId)
+                .lat(37.5665).lng(126.9780).address("서울 중구").type("카페").build());
+    }
+
+    /** seed-store-size-status.sql 처럼 크기 × 축 4행을 0으로 만든다. */
+    private List<StoreSizeStatus> sizeRows(Store store) {
+        List<StoreSizeStatus> rows = new ArrayList<>();
+        for (boolean demo : new boolean[]{false, true}) {
+            for (DogSize size : DogSize.values()) {
+                rows.add(persist(StoreSizeStatus.builder().store(store).size(size).demo(demo).build()));
+            }
+        }
+        return rows;
     }
 
     private <T> T persist(T entity) {

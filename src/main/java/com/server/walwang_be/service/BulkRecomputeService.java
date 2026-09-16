@@ -1,7 +1,6 @@
 package com.server.walwang_be.service;
 
 import com.server.walwang_be.dto.RecomputeAllResponse;
-import com.server.walwang_be.entity.BlindStatus;
 import com.server.walwang_be.repo.ReviewRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,10 +11,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 리뷰가 있는 가게를 한꺼번에 다시 집계한다.
+ * 리뷰가 있거나 옛 점수·태그가 남은 가게를 한꺼번에 다시 집계한다(ReviewRepository.findRecomputeTargets).
  *
- * 리뷰를 SQL로 직접 넣으면 등록 경로를 타지 않아 재집계가 돌지 않는다.
- * 목 리뷰를 넣은 뒤 가게마다 재집계를 부르는 대신 한 번에 끝내라고 두는 자리다.
+ * 리뷰를 SQL로 직접 넣거나 지우면 등록·삭제 경로를 타지 않아 재집계가 돌지 않는다.
+ * 목 리뷰를 넣거나 지운 뒤 가게마다 재집계를 부르는 대신 한 번에 끝내라고 두는 자리다.
+ * 리뷰가 모두 사라진 가게는 행을 지우지 않고 0으로 되돌린다 — 행이 없으면 화면이 크기별 상태를 그리지 못한다.
+ * 관리자 페이지의 전체 재집계(AdminRecomputeService)가 백그라운드에서 부른다.
  *
  * 일부러 트랜잭션을 걸지 않는다 — 가게마다 ReviewService의 트랜잭션이 따로 열려야
  * 한 곳이 실패해도 그 건만 롤백되고 나머지가 살아남는다.
@@ -30,12 +31,13 @@ public class BulkRecomputeService {
     private final ReviewService reviewService;
 
     /**
-     * @param demo true면 시연용 목 리뷰로 집계한다.
-     *             ⚠ 결과가 실제 리뷰 기준 점수를 덮어쓴다(ReviewService.recompute 참고)
+     * @param demo true면 시연용 목 리뷰로 집계해 시연 쪽 행(is_demo=true)만 고친다.
+     *             실제 쪽 행은 건드리지 않는다. 두 축을 다 맞추려면 두 번 부른다(AdminRecomputeService)
      */
     public RecomputeAllResponse recomputeAll(boolean demo) {
         long startedAt = System.currentTimeMillis();
-        List<UUID> storeIds = reviewRepository.findStoreIdsWithReviews(BlindStatus.NORMAL);
+        // 리뷰가 있는 가게 + 옛 값이 남은 가게. 리뷰가 없는 가게는 재집계가 행을 지우지 않고 0으로 되돌린다.
+        List<UUID> storeIds = reviewRepository.findRecomputeTargets(demo);
 
         List<RecomputeAllResponse.Failure> failures = new ArrayList<>();
         int succeeded = 0;

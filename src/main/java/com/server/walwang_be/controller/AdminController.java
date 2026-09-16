@@ -11,6 +11,7 @@ import com.server.walwang_be.security.AdminOperator;
 import com.server.walwang_be.security.ClientIpResolver;
 import com.server.walwang_be.service.AccessLogService;
 import com.server.walwang_be.service.AdminModerationService;
+import com.server.walwang_be.service.AdminRecomputeService;
 import com.server.walwang_be.service.AdminTerminationService;
 import com.server.walwang_be.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -44,8 +45,9 @@ import java.util.UUID;
  * AOP나 인터셉터로 한꺼번에 기록하지 않고 여기서 직접 부르는 이유는
  * docs/admin-access-log.md "기록 방식" 참고. 빠뜨리면 AccessLogEnforcementInterceptor가 막는다.
  *
- * 쓰기 작업은 이용계약 해지 하나뿐이고, 그것만 순서가 다르다 — 기록을 먼저 커밋하지 않고
- * 삭제와 같은 트랜잭션에 담는다(AdminTerminationService 주석). 그래서 audit(...)을 쓰지 않는다.
+ * 쓰기 작업(이용계약 해지, 리뷰 임시조치·해제, 가게 재집계)은 순서가 다르다 — 기록을 먼저 커밋하지 않고
+ * 변경과 같은 트랜잭션에 담는다(AdminTerminationService 주석). 그래서 audit(...)을 쓰지 않는다.
+ * 전체 재집계만 예외로, 서비스가 실행 요청을 먼저 커밋한다(AdminRecomputeService 주석).
  *
  * 뷰 이름만 돌려준다. @ResponseBody를 쓰면 위 인터셉터가 막기 전에 본문이 나간다.
  */
@@ -61,6 +63,7 @@ public class AdminController {
     private final AdminUserService adminUserService;
     private final AdminTerminationService adminTerminationService;
     private final AdminModerationService adminModerationService;
+    private final AdminRecomputeService adminRecomputeService;
     private final AccessLogService accessLogService;
     private final ClientIpResolver clientIpResolver;
 
@@ -239,6 +242,61 @@ public class AdminController {
         redirect.addFlashAttribute("moderatedStore", applied.storeName());
         redirect.addFlashAttribute("moderatedCounted", applied.countedReviews());
         return "redirect:/admin/reports";
+    }
+
+    // ── 점수 재집계 ───────────────────────────────────────────
+
+    /**
+     * 재집계 화면. 입력 폼과 전체 재집계 진행 상태만 있고 개인정보를 보여주지 않는다
+     * (실행한 계정도 싣지 않는다 — 접속기록에 있다). 그래서 이 화면은 기록하지 않고
+     * 인터셉터에만 그 판단을 알린다. 여기에 회원·리뷰 정보를 더하면 audit(...)부터 넣는다.
+     */
+    @GetMapping("/recompute")
+    public String recompute(HttpServletRequest request, Model model) {
+        AccessLogEnforcementInterceptor.markRecorded(request);
+
+        model.addAttribute("title", "점수 재집계");
+        model.addAttribute("reasonMax", AdminRecomputeService.REASON_MAX);
+        model.addAttribute("job", adminRecomputeService.status());
+        return "admin/recompute";
+    }
+
+    /**
+     * 가게 하나를 다시 센다. 되돌릴 필요가 없는 작업이라(다시 세면 같은 값) 확인 단계 없이 사유만 받는다.
+     * 기록은 서비스가 재집계와 같은 트랜잭션에서 남긴다.
+     */
+    @PostMapping("/recompute/store")
+    public String recomputeStore(@RequestParam UUID storeId,
+                                 @RequestParam String reason,
+                                 HttpServletRequest request,
+                                 Authentication authentication,
+                                 RedirectAttributes redirect) {
+        String operator = AdminOperator.require(authentication);
+        AdminRecomputeService.StoreResult result = adminRecomputeService.recomputeStore(
+                storeId, reason, operator, clientIpResolver.resolve(request));
+        AccessLogEnforcementInterceptor.markRecorded(request);
+
+        redirect.addFlashAttribute("recomputedStore", result.storeName());
+        redirect.addFlashAttribute("recomputedReal", result.realCounted());
+        redirect.addFlashAttribute("recomputedDemo", result.demoCounted());
+        return "redirect:/admin/recompute";
+    }
+
+    /**
+     * 전체 재집계를 백그라운드로 시작하고 곧바로 돌아온다. 결과는 재집계 화면을 새로 고쳐 본다.
+     * 기록("실행 요청")은 서비스가 시작 전에 커밋한다.
+     */
+    @PostMapping("/recompute/all")
+    public String recomputeAll(@RequestParam String reason,
+                               HttpServletRequest request,
+                               Authentication authentication,
+                               RedirectAttributes redirect) {
+        String operator = AdminOperator.require(authentication);
+        adminRecomputeService.startRecomputeAll(reason, operator, clientIpResolver.resolve(request));
+        AccessLogEnforcementInterceptor.markRecorded(request);
+
+        redirect.addFlashAttribute("recomputeAllStarted", true);
+        return "redirect:/admin/recompute";
     }
 
     /**

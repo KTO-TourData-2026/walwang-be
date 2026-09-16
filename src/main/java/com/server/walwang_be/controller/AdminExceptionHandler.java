@@ -1,6 +1,7 @@
 package com.server.walwang_be.controller;
 
 import com.server.walwang_be.service.AdminModerationService;
+import com.server.walwang_be.service.AdminRecomputeService;
 import com.server.walwang_be.service.AdminTerminationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -44,11 +45,12 @@ public class AdminExceptionHandler {
      * 확인 닉네임이 다르거나, 사유가 비었거나, 상태가 맞지 않을 때다.
      *
      * 여기만 예외 메시지를 화면에 쓴다 — 무엇을 고쳐야 하는지 알려줘야 관리자가 다시 시도할 수 있다.
-     * 그래서 두 예외의 메시지는 코드에 있는 고정 문자열만 담는다
-     * (AdminTerminationService, AdminModerationService 참고).
+     * 그래서 이 예외들의 메시지는 코드에 있는 고정 문자열만 담는다
+     * (AdminTerminationService, AdminModerationService, AdminRecomputeService 참고).
      */
     @ExceptionHandler({AdminTerminationService.TerminationRejected.class,
-            AdminModerationService.ModerationRejected.class})
+            AdminModerationService.ModerationRejected.class,
+            AdminRecomputeService.RecomputeRejected.class})
     public ModelAndView rejected(RuntimeException e) {
         return view(HttpStatus.BAD_REQUEST, e.getMessage());
     }

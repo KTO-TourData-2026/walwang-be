@@ -66,7 +66,7 @@ COMMIT;
 -- ===================================================================
 -- 시연 쪽 태그는 아직 비어 있다. 목 리뷰가 있는 가게는 재집계를 한 번 돌려야
 -- 채워진다. store_size_status 와 같은 호출이라 한 번에 해결된다.
---   POST /internal/stores/{storeId}/recompute?demo=true
+--   관리자 페이지 → 재집계 → 전체 재집계 (실제·시연 두 축을 함께 센다)
 
 -- 확인
 --   SELECT is_demo, count(*) FROM store_tags GROUP BY is_demo;

@@ -125,8 +125,8 @@ class AdminModerationServiceTest {
     }
 
     /**
-     * store_size_status는 (가게, 크기)당 한 행이라 시연용과 실제용이 같은 자리를 쓴다.
-     * 목 리뷰를 가린 뒤 demo=false로 부르면 실제 리뷰 기준 점수를 0으로 덮는다.
+     * store_size_status는 is_demo로 행이 나뉘어 있고, 재집계는 부른 축의 행만 고친다.
+     * 목 리뷰를 가린 뒤 demo=false로 부르면 시연 축이 그대로라 가린 리뷰가 시연 점수에 남는다.
      */
     @Test
     void 재집계는_리뷰의_demo_축으로_부른다() {

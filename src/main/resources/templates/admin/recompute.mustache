@@ -1,0 +1,70 @@
+{{> admin/_head}}
+{{> admin/_nav}}
+<main>
+  <h1>점수 재집계</h1>
+  {{#recomputedStore}}<p class="info">가게 <strong>{{.}}</strong> 을(를) 다시 셌습니다. 집계에 쓰인 리뷰는 실제 {{recomputedReal}}건, 시연 {{recomputedDemo}}건입니다.</p>{{/recomputedStore}}
+  {{#recomputeAllStarted}}<p class="info">전체 재집계를 시작했습니다. 이 화면을 새로 고치면 진행 상태가 바뀝니다.</p>{{/recomputeAllStarted}}
+  <p class="meta">리뷰를 DB에서 직접 넣거나 고치거나 지웠을 때 동반 가능 점수와 태그를 저장된 리뷰로 다시 셉니다.
+    리뷰 등록·삭제와 신고 화면의 블라인드는 스스로 다시 세므로 여기가 필요 없습니다.
+    실제·시연 두 축을 모두 세며, 몇 번 실행해도 결과는 같습니다. 실행은 사유와 함께 접속기록에 남습니다.</p>
+
+  <section class="moderation">
+    <h2>가게 하나</h2>
+    <form method="post" action="/admin/recompute/store" class="stack">
+      <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+      <label>가게 ID <small>stores.store_id (UUID)</small>
+        <input type="text" name="storeId" required pattern="[0-9a-fA-F\-]{36}" autocomplete="off">
+      </label>
+      <label>처리 사유 <small>무엇을 고쳐서 다시 세는지. {{reasonMax}}자 이내</small>
+        <textarea name="reason" rows="2" maxlength="{{reasonMax}}" required></textarea>
+      </label>
+      <button type="submit">이 가게 재집계</button>
+    </form>
+  </section>
+
+  <section class="moderation">
+    <h2>전체 재집계</h2>
+    {{#job}}
+    {{#running}}
+    <p class="alert">실행 중입니다({{runningSince}} 시작). 끝나면 이 화면을 새로 고쳐 결과를 확인하세요.</p>
+    {{/running}}
+    {{^running}}
+    <p class="meta">리뷰가 있는 가게와, 리뷰는 없는데 옛 점수·태그가 남은 가게를 다시 셉니다.
+      리뷰가 없는 가게는 행을 남긴 채 0으로 되돌립니다.</p>
+    <p class="meta">백그라운드에서 돌고, 누르면 곧바로 이 화면으로 돌아옵니다. 가게 수에 따라 몇 분 걸릴 수 있습니다.
+      한 번에 하나만 실행됩니다. 도중에 서버가 재시작되면 그때까지 센 가게는 남으니 다시 실행하면 됩니다.</p>
+    <form method="post" action="/admin/recompute/all" class="stack">
+      <input type="hidden" name="{{csrfParameter}}" value="{{csrfToken}}">
+      <label>처리 사유 <small>목 리뷰 적재, SQL 삭제 확정 등. {{reasonMax}}자 이내</small>
+        <textarea name="reason" rows="2" maxlength="{{reasonMax}}" required></textarea>
+      </label>
+      <button type="submit">전체 재집계 시작</button>
+    </form>
+    {{/running}}
+
+    <h3>마지막 실행</h3>
+    {{#hasLastRun}}
+    <dl class="facts">
+      <dt>시작</dt><dd>{{lastStartedAt}}</dd>
+      <dt>종료</dt><dd>{{lastFinishedAt}} <small>({{lastElapsedSeconds}}초)</small></dd>
+    </dl>
+    {{#lastAborted}}<p class="alert">작업이 중간에 멈췄습니다. 서버 로그를 확인한 뒤 다시 실행하세요.</p>{{/lastAborted}}
+    {{^lastAborted}}
+    <div class="table-wrap">
+      <table class="compact">
+        <thead><tr><th>축</th><th class="num">대상</th><th class="num">성공</th><th class="num">실패</th></tr></thead>
+        <tbody>
+          {{#real}}<tr><td>{{label}}</td><td class="num">{{total}}</td><td class="num">{{succeeded}}</td><td class="num">{{failed}}</td></tr>{{/real}}
+          {{#demo}}<tr><td>{{label}}</td><td class="num">{{total}}</td><td class="num">{{succeeded}}</td><td class="num">{{failed}}</td></tr>{{/demo}}
+        </tbody>
+      </table>
+    </div>
+    {{#real}}{{#hasFailures}}<p class="meta">{{label}} 실패 가게: {{#failedStoreIds}}<code>{{.}}</code> {{/failedStoreIds}}{{#moreFailures}}외 다수(서버 로그 참고){{/moreFailures}}</p>{{/hasFailures}}{{/real}}
+    {{#demo}}{{#hasFailures}}<p class="meta">{{label}} 실패 가게: {{#failedStoreIds}}<code>{{.}}</code> {{/failedStoreIds}}{{#moreFailures}}외 다수(서버 로그 참고){{/moreFailures}}</p>{{/hasFailures}}{{/demo}}
+    {{/lastAborted}}
+    {{/hasLastRun}}
+    {{^hasLastRun}}<p class="empty">서버가 뜬 뒤 끝난 실행이 없습니다. 이전 기록은 접속기록(전체 점수 재집계 실행)과 서버 로그에 있습니다.</p>{{/hasLastRun}}
+    {{/job}}
+  </section>
+</main>
+{{> admin/_foot}}

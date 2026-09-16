@@ -1,12 +1,14 @@
 package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.AdminAccessLogRow;
+import com.server.walwang_be.dto.AdminRecomputeStatus;
 import com.server.walwang_be.dto.AdminUserDetail;
 import com.server.walwang_be.dto.AdminReportListItem;
 import com.server.walwang_be.dto.AdminReportedReviewDetail;
 import com.server.walwang_be.dto.AdminUserListItem;
 import com.server.walwang_be.entity.AccessAction;
 import com.server.walwang_be.service.AdminModerationService;
+import com.server.walwang_be.service.AdminRecomputeService;
 import com.server.walwang_be.service.AdminTerminationService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -313,6 +315,137 @@ class AdminControllerTest extends AdminWebTestSupport {
                 .andExpect(status().isBadRequest());
 
         verify(adminModerationService, never()).blind(any(), any(), any(), any());
+    }
+
+    // ── 점수 재집계 ───────────────────────────────────────────
+
+    private static final UUID STORE_ID = UUID.fromString("33333333-4444-5555-6666-777777777777");
+
+    private static AdminRecomputeStatus idleStatus() {
+        return new AdminRecomputeStatus(false, "방금", false, "", "", 0, false, null, null);
+    }
+
+    /** 개인정보가 없는 화면이라 기록하지 않지만, 기록 누락 안전망에 막히지도 않아야 한다. */
+    @Test
+    void 재집계_화면은_열리고_기록하지_않는다() throws Exception {
+        given(adminRecomputeService.status()).willReturn(idleStatus());
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/recompute").session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("action=\"/admin/recompute/store\"")))
+                .andExpect(content().string(containsString("action=\"/admin/recompute/all\"")))
+                .andExpect(content().string(containsString("name=\"_csrf\"")));
+
+        // 로그인 기록(LOGIN_SUCCESS)은 로그인 핸들러가 남긴 것이다. 이 화면이 남긴 행은 없다.
+        verify(accessLogService, never()).record(any(), any(),
+                org.mockito.ArgumentMatchers.argThat(action -> action != AccessAction.LOGIN_SUCCESS), any(), any());
+    }
+
+    @Test
+    void 전체_재집계가_도는_중이면_시작_버튼을_숨기고_결과를_보여준다() throws Exception {
+        given(adminRecomputeService.status()).willReturn(new AdminRecomputeStatus(
+                true, "2026-09-16 10:00:00", true, "2026-09-15 09:00:00", "2026-09-15 09:03:00", 180, false,
+                new AdminRecomputeStatus.Axis("실제", 10, 9, 1, true, List.of(STORE_ID.toString()), false),
+                new AdminRecomputeStatus.Axis("시연", 10, 10, 0, false, List.of(), false)));
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/recompute").session(session).with(fromAllowedIp()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("실행 중입니다(2026-09-16 10:00:00 시작)")))
+                .andExpect(content().string(not(containsString("action=\"/admin/recompute/all\""))))
+                .andExpect(content().string(containsString("(180초)")))
+                .andExpect(content().string(containsString("<code>" + STORE_ID + "</code>")));
+    }
+
+    @Test
+    void 가게_재집계는_사유를_서비스로_넘기고_결과를_알려준다() throws Exception {
+        given(adminRecomputeService.recomputeStore(STORE_ID, "목 리뷰 SQL 적재", USERNAME, ALLOWED_IP))
+                .willReturn(new AdminRecomputeService.StoreResult(STORE_ID, "테스트 카페", 3, 5));
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", STORE_ID.toString())
+                        .param("reason", "목 리뷰 SQL 적재")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/recompute"))
+                .andExpect(flash().attribute("recomputedStore", "테스트 카페"))
+                .andExpect(flash().attribute("recomputedReal", 3L))
+                .andExpect(flash().attribute("recomputedDemo", 5L));
+
+        verify(adminRecomputeService).recomputeStore(STORE_ID, "목 리뷰 SQL 적재", USERNAME, ALLOWED_IP);
+        // 기록은 서비스가 재집계와 같은 트랜잭션에서 남긴다. 따로 커밋하면 원자성이 깨진다.
+        verify(accessLogService, never()).record(any(), any(), eq(AccessAction.RECOMPUTE_STORE), any(), any());
+    }
+
+    @Test
+    void 가게_ID가_UUID가_아니면_서비스를_부르지_않고_400_화면() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", "not-a-uuid")
+                        .param("reason", "목 리뷰 SQL 적재")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("text/html"));
+
+        verify(adminRecomputeService, never()).recomputeStore(any(), any(), any(), any());
+    }
+
+    @Test
+    void 없는_가게면_404_화면() throws Exception {
+        willThrow(new java.util.NoSuchElementException("존재하지 않는 가게입니다."))
+                .given(adminRecomputeService).recomputeStore(any(), any(), any(), any());
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/store")
+                        .param("storeId", STORE_ID.toString())
+                        .param("reason", "목 리뷰 SQL 적재")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 전체_재집계는_시작만_하고_곧바로_재집계_화면으로_돌아간다() throws Exception {
+        given(adminRecomputeService.startRecomputeAll("목 리뷰 적재", USERNAME, ALLOWED_IP))
+                .willReturn(java.time.Instant.now());
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(redirectedUrl("/admin/recompute"))
+                .andExpect(flash().attribute("recomputeAllStarted", true));
+
+        verify(adminRecomputeService).startRecomputeAll("목 리뷰 적재", USERNAME, ALLOWED_IP);
+    }
+
+    @Test
+    void 이미_도는_중이면_400_화면이_나가고_이유를_알려준다() throws Exception {
+        willThrow(new AdminRecomputeService.RecomputeRejected(
+                "전체 재집계가 이미 실행 중입니다. 끝난 뒤 다시 시도하세요. 아무것도 실행하지 않았습니다."))
+                .given(adminRecomputeService).startRecomputeAll(any(), any(), any());
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/admin/recompute/all")
+                        .param("reason", "목 리뷰 적재")
+                        .session(session).with(fromAllowedIp()).with(csrf()))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("이미 실행 중입니다")));
+    }
+
+    @Test
+    void GET_으로는_재집계를_실행할_수_없다() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/admin/recompute/all").session(session).with(fromAllowedIp()))
+                .andExpect(status().isMethodNotAllowed());
+        mockMvc.perform(get("/admin/recompute/store").param("storeId", STORE_ID.toString())
+                        .session(session).with(fromAllowedIp()))
+                .andExpect(status().isMethodNotAllowed());
+
+        verify(adminRecomputeService, never()).startRecomputeAll(any(), any(), any());
+        verify(adminRecomputeService, never()).recomputeStore(any(), any(), any(), any());
     }
 
     // ── 접속기록 필터 ───────────────────────────────────────────
