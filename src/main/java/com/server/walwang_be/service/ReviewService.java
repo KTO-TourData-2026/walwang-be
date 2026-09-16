@@ -119,7 +119,9 @@ public class ReviewService {
                                        MultipartFile photo, boolean demo) {
         // 시연 모드는 영수증을 받지 않는다. 가보지 않은 가게에도 쓸 수 있다는 뜻이라
         // 아래에서 verified=false로 남겨 실제 데이터와 갈라 둔다.
-        if (!demo) {
+        // 거절당한 방문도 영수증을 요구하지 않는다 — 결제를 못 했으니 낼 영수증이 없다.
+        // 토큰을 들고 왔다면 재사용을 막으려고 그대로 소비한다.
+        if (!demo && (request.dogAllowed() || hasReceiptToken(request))) {
             consumeReceiptToken(userId, request);
         }
 
@@ -152,14 +154,16 @@ public class ReviewService {
                 .content(request.content())
                 .tags(tags)
                 .demo(demo)
-                // 영수증을 확인한 리뷰만 인증으로 친다. 시연 리뷰는 확인한 적이 없다.
+                // 시연 리뷰만 인증에서 뺀다. 영수증 없이 쓴 거절 리뷰는 인증으로 친다 —
+                // 거절을 증명할 수단이 구조적으로 없고, 빼면 "불가" 정보가 영영 쌓이지 않는다.
+                // 허위 거절 리뷰는 신고와 재가입 차단으로 대응한다.
                 .verified(!demo)
                 .build());
 
         reviewRepository.flush();
-        // 시연 리뷰는 어느 축의 점수도 움직이지 않는다 — 인증을 거치지 않아
+        // 시연 리뷰는 어느 축의 점수도 움직이지 않는다 — 인증되지 않은 리뷰라
         // 시연 쪽 집계에서도 빠진다. 시연 쪽 행은 목 리뷰로만 채워진다.
-        if (!demo) {
+        if (review.isVerified()) {
             recompute(store, demo);
         }
 
@@ -181,8 +185,8 @@ public class ReviewService {
         // 리뷰가 하나 붙으면 그 가게의 설명이 달라진다. AI가 벡터를 다시 계산하도록
         // 알려만 둔다 — 실패해도 리뷰 등록은 그대로 성공이다.
         // 시연 리뷰는 부르지 않는다. 임베딩은 실제 리뷰로 만든 것이라
-        // 인증 없이 쓴 문장이 섞이면 그 표현으로 가게가 검색된다.
-        if (!demo) {
+        // 시연 중에 쓴 문장이 섞이면 그 표현으로 가게가 검색된다.
+        if (review.isVerified()) {
             afterCommit(() -> embeddingService.refreshAsync(store.getStoreId()));
         }
 
@@ -269,10 +273,14 @@ public class ReviewService {
         }
     }
 
+    private boolean hasReceiptToken(ReviewCreateRequest request) {
+        return request.receiptToken() != null && !request.receiptToken().isBlank();
+    }
+
     private void consumeReceiptToken(UUID userId, ReviewCreateRequest request) {
-        // DTO에서 @NotBlank를 뺐으므로(시연 모드가 토큰 없이 온다) 여기서 막는다.
+        // DTO에서 @NotBlank를 뺐으므로(시연 모드·거절 리뷰가 토큰 없이 온다) 여기서 막는다.
         // 400을 그대로 유지하려고 IllegalArgumentException을 쓴다.
-        if (request.receiptToken() == null || request.receiptToken().isBlank()) {
+        if (!hasReceiptToken(request)) {
             throw new IllegalArgumentException("영수증 인증이 필요합니다.");
         }
         ReceiptTokenRepository.Issued issued = receiptTokenRepository.find(request.receiptToken())

@@ -16,9 +16,9 @@ import java.util.UUID;
 public record ReviewCreateRequest(
         @NotNull UUID storeId,
         /**
-         * 영수증 인증 토큰. @NotBlank를 걸지 않는 이유는 시연 모드(demo=true)가
-         * 인증을 건너뛰기 때문이다 — 여기서 막으면 서비스까지 오지도 못한다.
-         * 평소 경로에서 비어 있으면 ReviewService가 400으로 끊는다.
+         * 영수증 인증 토큰. @NotBlank를 걸지 않는 이유는 시연 모드(demo=true)와
+         * 거절 리뷰(dogAllowed=false)가 인증 없이 오기 때문이다 — 여기서 막으면
+         * 서비스까지 오지도 못한다. 그 밖의 경로에서 비어 있으면 ReviewService가 400으로 끊는다.
          */
         String receiptToken,
         @NotNull Boolean dogAllowed,
