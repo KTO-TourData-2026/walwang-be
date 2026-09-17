@@ -32,7 +32,7 @@ import java.util.UUID;
 /**
  * 유저가 저장해 둔 코스.
  *
- * 어디를 갈지(가게와 방문 순서)만 저장한다.
+ * 어디를 갈지(출발 좌표, 가게와 방문 순서)만 저장한다.
  *
  * 경로선·거리·소요시간은 담지 않는다 — 티맵에서 얻은 값이라
  * 약관상 24시간을 넘겨 보관할 수 없다. 조회할 때마다 다시 계산한다.
@@ -82,6 +82,18 @@ public class SavedCourse {
     @OrderBy("arrivalOrder ASC")
     private List<SavedCourseStore> stores = new ArrayList<>();
 
+    /**
+     * 출발 좌표. 추천이 경로를 여기서부터 계산했으므로 조회도 여기서 시작해야 같은 코스가 된다.
+     * 가게가 아니라 saved_course_stores(store_id FK)에는 넣을 수 없어 코스에 둔다.
+     *
+     * 이 컬럼이 생기기 전에 저장한 코스는 null이다 — 조회 때 첫 가게를 출발점으로 삼는다.
+     */
+    @Column(name = "start_lat")
+    private Double startLat;
+
+    @Column(name = "start_lng")
+    private Double startLng;
+
     /** 시연 중에 저장한 코스인지. 조회는 항상 이 값으로 갈라진다. */
     @Column(name = "is_demo", nullable = false)
     private boolean demo;
@@ -92,9 +104,11 @@ public class SavedCourse {
     @Builder
     private SavedCourse(User user, String title, DogSize dogSize,
                         Collection<CoursePurpose> purposes, CourseDuration duration,
-                        String description, boolean demo) {
+                        String description, Double startLat, Double startLng, boolean demo) {
         this.user = user;
         this.demo = demo;
+        this.startLat = startLat;
+        this.startLng = startLng;
         this.title = title;
         this.dogSize = dogSize;
         this.purposes = (purposes == null || purposes.isEmpty())

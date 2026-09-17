@@ -107,8 +107,11 @@ public class CourseService {
         List<Store> selected = rankCandidates(candidates, request.tags(), demo)
                 .map(ranked -> pickWithinWalkBudget(ranked, request.lat(), request.lng(), duration))
                 .orElse(candidates);
+        // 출발점 가게를 후보에서 빼지 않는다. 조건에 맞으면 거리 0이라 맨 먼저 담기고,
+        // 출발점 바로 뒤에 다시 나온다(그 사이 구간은 0m/0분).
         List<Store> route = buildRoute(selected, request.lat(), request.lng(), duration.maxStores());
-        Walk walk = walk(route, request.lat(), request.lng());
+        Point start = new Point(request.lat(), request.lng());
+        Walk walk = walk(route, start);
 
         return new CourseResponse(
                 null,
@@ -122,14 +125,24 @@ public class CourseService {
                 walk.legs(),
                 null,
                 relaxed,
-                storeCandidates.toResponses(route, statusByStore, storeCandidates.tags(route, demo), demo),
+                withStart(start, storeCandidates.toResponses(
+                        route, statusByStore, storeCandidates.tags(route, demo), demo)),
                 nearbyPlaceFinder.around(route));
     }
 
     /** @param demo 시연 중에 저장한 코스는 시연 쪽에만 남는다. */
     @Transactional
     public UUID save(UUID userId, CourseSaveRequest request, boolean demo) {
-        List<Store> stores = loadStoresInOrder(request.storeIds());
+        // 추천 응답을 그대로 돌려보내면 출발점의 nil UUID가 섞여 온다. 가게가 아니니 건너뛴다.
+        List<UUID> storeIds = request.storeIds().stream()
+                .filter(id -> !CourseStoreResponse.START_POINT_ID.equals(id))
+                .toList();
+        if (storeIds.isEmpty()) {
+            throw new IllegalArgumentException("코스에 가게가 한 곳 이상 있어야 합니다.");
+        }
+        List<Store> stores = loadStoresInOrder(storeIds);
+        // 한쪽만 온 좌표는 쓸 수 없다. 둘 다 없는 것으로 보고 첫 가게에서 출발시킨다.
+        boolean hasStart = request.startLat() != null && request.startLng() != null;
 
         SavedCourse course = SavedCourse.builder()
                 // 저장만 할 것이라 User를 실제로 읽어올 필요가 없다.
@@ -139,9 +152,12 @@ public class CourseService {
                 .purposes(request.purposes())
                 .duration(request.duration())
                 .description(request.description())
+                .startLat(hasStart ? request.startLat() : null)
+                .startLng(hasStart ? request.startLng() : null)
                 .demo(demo)
                 .build();
 
+        // DB의 arrival_order는 가게만 1부터 센다. 출발점(응답의 0번)은 여기 들어가지 않는다.
         for (int i = 0; i < stores.size(); i++) {
             course.addStore(stores.get(i), i + 1);
         }
@@ -171,7 +187,11 @@ public class CourseService {
         Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(stores, course.getDogSize(), demo);
 
         // 경로·거리·시간은 저장하지 않으므로 조회할 때마다 다시 얻는다.
-        Walk walk = walk(stores);
+        // 추천과 같은 출발점에서 같은 지점들을 이어야 같은 코스가 된다.
+        // 가게가 하나도 남지 않은 코스는 출발점도 없다. walk·withStart가 빈 목록에서 먼저 돌아가
+        // start를 읽지 않는다.
+        Point start = stores.isEmpty() ? null : startOf(course, stores);
+        Walk walk = walk(stores, start);
 
         return new CourseResponse(
                 course.getCourseId(),
@@ -186,7 +206,8 @@ public class CourseService {
                 course.getDescription(),
                 // 저장된 코스는 이미 확정된 결과라 완화 여부를 따지지 않는다.
                 false,
-                storeCandidates.toResponses(stores, statusByStore, storeCandidates.tags(stores, demo), demo),
+                withStart(start, storeCandidates.toResponses(
+                        stores, statusByStore, storeCandidates.tags(stores, demo), demo)),
                 nearbyPlaceFinder.around(stores));
     }
 
@@ -205,7 +226,9 @@ public class CourseService {
                             .toList();
                     // 목록은 직선 추정치로 채운다. 코스마다 티맵을 부르면
                     // 호출이 코스 수만큼 늘어나고, 미리보기에는 이 정도면 충분하다.
-                    double distance = straightDistance(stores);
+                    // 상세와 같이 출발점에서부터 센다. storeCount에는 출발점을 넣지 않는다.
+                    double distance = stores.isEmpty() ? 0
+                            : totalDistance(toWalkPath(stores, startOf(course, stores)));
                     return SavedCourseSummaryResponse.of(course, demo,
                             (int) Math.round(distance),
                             totalDuration(distance, stores.size()));
@@ -232,6 +255,38 @@ public class CourseService {
             throw new AccessDeniedException("자신이 저장한 코스만 볼 수 있습니다.");
         }
         return course;
+    }
+
+    /**
+     * 저장된 코스의 출발점.
+     *
+     * 출발 좌표를 남기기 전에 저장한 코스(start_lat이 null)는 첫 가게에서 출발한 것으로 본다 —
+     * 첫 구간이 0m라 거리는 예전 조회값 그대로이고, 응답 모양은 새 코스와 같아진다.
+     *
+     * @param stores 비어 있지 않아야 한다
+     */
+    private Point startOf(SavedCourse course, List<Store> stores) {
+        if (course.getStartLat() != null && course.getStartLng() != null) {
+            return new Point(course.getStartLat(), course.getStartLng());
+        }
+        Store first = stores.get(0);
+        return new Point(first.getLat(), first.getLng());
+    }
+
+    /**
+     * 출발점 항목을 맨 앞에 붙인다. 추천과 조회가 같은 자리에서 붙여야 두 응답이 같은 모양이 된다.
+     *
+     * 갈 곳이 하나도 없으면 붙이지 않는다 — 출발점만 있는 코스는 코스가 아니고,
+     * 화면은 빈 stores로 "결과 없음"을 가른다.
+     */
+    private List<CourseStoreResponse> withStart(Point start, List<CourseStoreResponse> stores) {
+        if (stores.isEmpty()) {
+            return stores;
+        }
+        List<CourseStoreResponse> withStart = new ArrayList<>(stores.size() + 1);
+        withStart.add(CourseStoreResponse.startPoint(start.lat(), start.lng()));
+        withStart.addAll(stores);
+        return withStart;
     }
 
     /**
@@ -331,7 +386,7 @@ public class CourseService {
     /** 고른 곳들을 실제 동선(최근접 이웃)으로 이었을 때의 직선 추정 거리. */
     private double walkDistance(List<Store> stores, double lat, double lng) {
         List<Store> route = buildRoute(stores, lat, lng, stores.size());
-        return totalDistance(toWalkPath(route, lat, lng));
+        return totalDistance(toWalkPath(route, new Point(lat, lng)));
     }
 
     /**
@@ -365,56 +420,37 @@ public class CourseService {
     }
 
     /**
-     * 실제 보행 경로. 티맵이 알려준 길을 쓰고, 못 받으면 직선으로 대신한다.
+     * 실제 보행 경로. 출발점에서 가게를 차례로 잇는다.
+     * 티맵이 알려준 길을 쓰고, 못 받으면 직선으로 대신한다.
+     *
+     * 추천과 저장 코스가 이 한 자리를 지난다 — 출발점과 가게가 같으면 같은 경로가 나온다.
      *
      * 실패해도 코스 자체는 그대로 내보낸다 — 경로선이 안 그려질 뿐이고,
      * 어디를 갈지는 이미 정해져 있기 때문이다.
      */
-    private Walk walk(List<Store> route, double lat, double lng) {
+    private Walk walk(List<Store> route, Point start) {
         if (route.isEmpty()) {
             return new Walk(List.of(), List.of(), 0, 0);
         }
         List<TmapClient.Waypoint> waypoints = new ArrayList<>(route.size() + 1);
-        waypoints.add(new TmapClient.Waypoint("출발지", lat, lng));
+        waypoints.add(new TmapClient.Waypoint("출발점", start.lat(), start.lng()));
         route.forEach(store -> waypoints.add(
                 new TmapClient.Waypoint(store.getName(), store.getLat(), store.getLng())));
-        return walk(route, waypoints, lat, lng);
-    }
-
-    /**
-     * 저장된 코스의 경로. 출발지는 첫 가게로 삼는다 —
-     * 지도 중심이 어디였는지는 저장하지 않기 때문이다.
-     */
-    private Walk walk(List<Store> route) {
-        if (route.size() < 2) {
-            // 지점이 하나면 이을 구간이 없다. legs는 n-1 = 0개.
-            return new Walk(List.of(), List.of(), 0, route.size() * DWELL_MINUTES_PER_STORE);
-        }
-        List<TmapClient.Waypoint> waypoints = route.stream()
-                .map(store -> new TmapClient.Waypoint(
-                        store.getName(), store.getLat(), store.getLng()))
-                .toList();
-        Store first = route.get(0);
-        return walk(route, waypoints, first.getLat(), first.getLng());
-    }
-
-    private Walk walk(List<Store> route, List<TmapClient.Waypoint> waypoints,
-                      double lat, double lng) {
 
         Optional<TmapClient.WalkRoute> found = tmapClient.walkRoute(waypoints);
         if (found.isPresent()) {
             TmapClient.WalkRoute walk = found.get();
             // 티맵이 준 시간은 걷는 시간뿐이라, 머무는 시간을 더해야 코스 소요시간이 된다.
+            // 머무는 곳은 가게뿐이다 — 출발점은 세지 않는다.
             int minutes = (int) Math.round(walk.timeSeconds() / 60.0)
                     + route.size() * DWELL_MINUTES_PER_STORE;
-            return new Walk(walk.path(),
-                    toLegs(walk.legs(), waypoints.size() - route.size()),
+            return new Walk(walk.path(), toLegs(walk.legs()),
                     walk.distanceMeters(), minutes);
         }
         // 경로선 없이 간다. 거리·시간은 직선 기준 추정으로 채운다.
         // legs는 비운다 — 직선으로 나눈 구간별 값은 실제로 걷는 거리가 아니라,
         // 화면에 "여기서 저기까지 320m"라고 적어 놓으면 틀린 값을 읽게 된다.
-        double distance = totalDistance(toWalkPath(route, lat, lng));
+        double distance = totalDistance(toWalkPath(route, start));
         return new Walk(List.of(), List.of(), (int) Math.round(distance),
                 totalDuration(distance, route.size()));
     }
@@ -422,20 +458,18 @@ public class CourseService {
     /**
      * 티맵 구간을 stores 배열 기준 인덱스로 옮긴다.
      *
-     * 추천에서는 waypoints 맨 앞에 지도 중심(출발지)이 하나 더 붙는다. 그 지점은 stores에
-     * 없어 가리킬 인덱스가 없으므로 출발지→첫 가게 구간은 legs에서 빼고 총거리에만 남긴다 —
-     * 저장된 코스에는 출발지가 없으니, 그래야 같은 코스가 추천과 조회에서 같은 legs를 낸다.
+     * waypoints와 응답 stores가 같은 순서(출발점, 가게들)라 i번째 구간이 곧 (i, i+1)이다.
+     * 그래서 구간 합이 totalDistance와 맞는다.
      *
-     * 5m 미만이라 티맵을 부르지 않은 구간도 거리 0으로 그대로 들어온다.
-     * 빼 버리면 뒤 구간의 인덱스가 한 칸씩 밀려 화면이 엉뚱한 가게 사이에 값을 적는다.
-     *
-     * @param offset waypoints가 stores보다 앞에서 몇 개 더 시작하는지 — 추천 1, 저장 코스 0
+     * 5m 미만이라 티맵을 부르지 않은 구간도 거리 0으로 그대로 들어온다 —
+     * 출발점과 첫 가게가 같은 곳이면 첫 구간이 그렇다.
+     * 빼 버리면 뒤 구간의 인덱스가 한 칸씩 밀려 화면이 엉뚱한 지점 사이에 값을 적는다.
      */
-    private List<CourseLegResponse> toLegs(List<TmapClient.RouteLeg> legs, int offset) {
-        List<CourseLegResponse> result = new ArrayList<>(Math.max(legs.size() - offset, 0));
-        for (int i = offset; i < legs.size(); i++) {
+    private List<CourseLegResponse> toLegs(List<TmapClient.RouteLeg> legs) {
+        List<CourseLegResponse> result = new ArrayList<>(legs.size());
+        for (int i = 0; i < legs.size(); i++) {
             TmapClient.RouteLeg leg = legs.get(i);
-            result.add(new CourseLegResponse(i - offset, i - offset + 1,
+            result.add(new CourseLegResponse(i, i + 1,
                     leg.distanceMeters(), walkMinutes(leg.timeSeconds())));
         }
         return result;
@@ -457,13 +491,17 @@ public class CourseService {
                         int distanceMeters, int durationMinutes) {
     }
 
-    /** 지도 중심에서 출발해 가게를 차례로 잇는다. [[위도, 경도], ...] */
-    private List<List<Double>> toWalkPath(List<Store> route, double lat, double lng) {
+    /** 코스의 출발 좌표. 추천은 요청 좌표, 저장 코스는 저장해 둔 좌표다. */
+    private record Point(double lat, double lng) {
+    }
+
+    /** 출발점에서 가게를 차례로 잇는다. [[위도, 경도], ...] */
+    private List<List<Double>> toWalkPath(List<Store> route, Point start) {
         if (route.isEmpty()) {
             return List.of();
         }
         List<List<Double>> path = new ArrayList<>(route.size() + 1);
-        path.add(List.of(lat, lng));
+        path.add(List.of(start.lat(), start.lng()));
         route.forEach(store -> path.add(List.of(store.getLat(), store.getLng())));
         return path;
     }
@@ -474,17 +512,6 @@ public class CourseService {
             List<Double> from = walkPath.get(i - 1);
             List<Double> to = walkPath.get(i);
             total += GeoDistance.between(from.get(0), from.get(1), to.get(0), to.get(1));
-        }
-        return total;
-    }
-
-    /** 가게를 차례로 잇는 직선거리. 티맵 없이 우리가 계산하는 값이다. */
-    private double straightDistance(List<Store> stores) {
-        double total = 0;
-        for (int i = 1; i < stores.size(); i++) {
-            Store from = stores.get(i - 1);
-            Store to = stores.get(i);
-            total += GeoDistance.between(from.getLat(), from.getLng(), to.getLat(), to.getLng());
         }
         return total;
     }

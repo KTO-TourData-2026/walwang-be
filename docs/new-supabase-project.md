@@ -80,6 +80,7 @@ saved_course_stores                   saved_course_purposes
 | 파일 | 이유 |
 |---|---|
 | `drop-saved-course-route.sql` | 지우려는 `walk_path` 등이 새 DB 에는 애초에 없다 |
+| `schema-saved-course-start.sql` | 컬럼 추가뿐이라 1단계에서 이미 생긴다 |
 | `schema-store-size-status-demo.sql` | PK 교체는 필요 없고(아래), 시연 행 INSERT 는 8번이 양쪽 축을 다 만들어 준다 |
 | `schema-store-aggregate-demo.sql` | PK 교체는 필요 없고, `stores` 집계 컬럼 3개는 새 DB 에 없다 |
 
