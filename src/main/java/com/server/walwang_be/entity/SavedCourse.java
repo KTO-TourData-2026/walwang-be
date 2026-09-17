@@ -83,10 +83,11 @@ public class SavedCourse {
     private List<SavedCourseStore> stores = new ArrayList<>();
 
     /**
-     * 출발 좌표. 추천이 경로를 여기서부터 계산했으므로 조회도 여기서 시작해야 같은 코스가 된다.
+     * 출발 좌표. 저장할 때 서버가 첫 가게의 좌표로 채운다 — 프론트에서 받지 않는다.
      * 가게가 아니라 saved_course_stores(store_id FK)에는 넣을 수 없어 코스에 둔다.
      *
-     * 이 컬럼이 생기기 전에 저장한 코스는 null이다 — 조회 때 첫 가게를 출발점으로 삼는다.
+     * 이 컬럼이 생기기 전에 저장한 코스는 null이다 — 조회 때 첫 가게를 출발점으로 삼으므로
+     * 새로 저장한 코스와 결과가 같다.
      */
     @Column(name = "start_lat")
     private Double startLat;

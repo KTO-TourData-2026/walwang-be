@@ -8,8 +8,9 @@
 -- ddl-auto: update 가 컬럼을 만들어 주지만, update 를 쓰지 않는 DB 에는 이 파일을 직접 돌린다.
 -- 여러 번 돌려도 안전하다.
 --
+-- 새로 저장하는 코스는 서버가 첫 가게 좌표로 채운다(CourseService.save).
 -- 기존 행은 null 로 둔다. 조회 때 첫 가게를 출발점으로 삼으므로(CourseService.startOf)
--- 채울 필요가 없고, 채우면 "원래 출발 좌표를 모른다"는 사실이 지워진다.
+-- 채운 것과 결과가 같다.
 
 ALTER TABLE saved_courses ADD COLUMN IF NOT EXISTS start_lat DOUBLE PRECISION;
 ALTER TABLE saved_courses ADD COLUMN IF NOT EXISTS start_lng DOUBLE PRECISION;

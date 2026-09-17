@@ -141,8 +141,8 @@ public class CourseService {
             throw new IllegalArgumentException("코스에 가게가 한 곳 이상 있어야 합니다.");
         }
         List<Store> stores = loadStoresInOrder(storeIds);
-        // 한쪽만 온 좌표는 쓸 수 없다. 둘 다 없는 것으로 보고 첫 가게에서 출발시킨다.
-        boolean hasStart = request.startLat() != null && request.startLng() != null;
+        // 출발 좌표는 프론트에서 받지 않고 첫 가게 좌표로 채운다. 방금 읽은 가게라 쿼리를 더 하지 않는다.
+        Store first = stores.isEmpty() ? null : stores.get(0);
 
         SavedCourse course = SavedCourse.builder()
                 // 저장만 할 것이라 User를 실제로 읽어올 필요가 없다.
@@ -152,8 +152,8 @@ public class CourseService {
                 .purposes(request.purposes())
                 .duration(request.duration())
                 .description(request.description())
-                .startLat(hasStart ? request.startLat() : null)
-                .startLng(hasStart ? request.startLng() : null)
+                .startLat(first == null ? null : first.getLat())
+                .startLng(first == null ? null : first.getLng())
                 .demo(demo)
                 .build();
 

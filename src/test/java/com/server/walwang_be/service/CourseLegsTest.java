@@ -357,58 +357,44 @@ class CourseLegsTest {
         assertThat(courses.get(1).totalDistance()).isBetween(190, 210);
     }
 
-    /** 추천 응답을 그대로 돌려보내도 저장된다 — 출발점 nil UUID는 건너뛰고 좌표는 코스에 남긴다. */
+    /**
+     * 출발 좌표는 프론트에서 받지 않고 첫 가게 좌표로 채운다.
+     * 출발점 nil UUID가 섞여 와도 건너뛰므로 "첫 가게"는 실제 가게 중 첫 번째다.
+     */
     @Test
-    void 저장은_출발점_id를_건너뛰고_좌표를_남긴다() {
+    void 저장은_첫_가게_좌표를_출발점으로_남긴다() {
         UUID userId = UUID.randomUUID();
         Store first = store(1);
         Store second = store(3);
-        given(storeRepository.findAllById(any())).willReturn(List.of(first, second));
+        given(storeRepository.findAllById(any())).willReturn(List.of(second, first));
         given(userRepository.getReferenceById(userId)).willReturn(org.mockito.Mockito.mock(User.class));
         given(savedCourseRepository.save(any())).willAnswer(call -> call.getArgument(0));
 
-        courseService.save(userId, saveRequest(CENTER_LAT, CENTER_LNG,
+        courseService.save(userId, saveRequest(
                 CourseStoreResponse.START_POINT_ID, first.getStoreId(), second.getStoreId()), false);
 
         org.mockito.ArgumentCaptor<SavedCourse> captor = org.mockito.ArgumentCaptor.forClass(SavedCourse.class);
         org.mockito.Mockito.verify(savedCourseRepository).save(captor.capture());
         SavedCourse saved = captor.getValue();
-        assertThat(saved.getStartLat()).isEqualTo(CENTER_LAT);
-        assertThat(saved.getStartLng()).isEqualTo(CENTER_LNG);
+        assertThat(saved.getStartLat()).isEqualTo(first.getLat());
+        assertThat(saved.getStartLng()).isEqualTo(first.getLng());
         // DB의 arrival_order는 가게만 1부터 센다.
         assertThat(saved.getStores())
                 .extracting(s -> s.getStore().getStoreId(), s -> s.getArrivalOrder())
                 .containsExactly(tuple(first.getStoreId(), 1), tuple(second.getStoreId(), 2));
     }
 
-    /** 좌표가 한쪽만 오면 둘 다 없는 것으로 본다 — 반쪽 좌표로는 출발점을 만들 수 없다. */
-    @Test
-    void 좌표가_한쪽만_오면_출발점을_남기지_않는다() {
-        UUID userId = UUID.randomUUID();
-        Store first = store(1);
-        given(storeRepository.findAllById(any())).willReturn(List.of(first));
-        given(savedCourseRepository.save(any())).willAnswer(call -> call.getArgument(0));
-
-        courseService.save(userId, saveRequest(CENTER_LAT, null, first.getStoreId()), false);
-
-        org.mockito.ArgumentCaptor<SavedCourse> captor = org.mockito.ArgumentCaptor.forClass(SavedCourse.class);
-        org.mockito.Mockito.verify(savedCourseRepository).save(captor.capture());
-        assertThat(captor.getValue().getStartLat()).isNull();
-        assertThat(captor.getValue().getStartLng()).isNull();
-    }
-
     @Test
     void 출발점_id만_있으면_저장하지_않는다() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> courseService.save(UUID.randomUUID(),
-                        saveRequest(CENTER_LAT, CENTER_LNG, CourseStoreResponse.START_POINT_ID), false))
+                        saveRequest(CourseStoreResponse.START_POINT_ID), false))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    private com.server.walwang_be.dto.CourseSaveRequest saveRequest(Double startLat, Double startLng,
-                                                                    UUID... storeIds) {
+    private com.server.walwang_be.dto.CourseSaveRequest saveRequest(UUID... storeIds) {
         return new com.server.walwang_be.dto.CourseSaveRequest(
                 "코스", DogSize.SMALL_MEDIUM, List.of(CoursePurpose.CAFE), CourseDuration.HALF_DAY,
-                null, List.of(storeIds), startLat, startLng);
+                null, List.of(storeIds));
     }
 
     private void assertThatSameCourse(CourseResponse actual, CourseResponse expected) {

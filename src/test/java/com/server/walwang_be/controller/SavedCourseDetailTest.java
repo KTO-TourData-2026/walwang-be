@@ -67,8 +67,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SavedCourseDetailTest {
 
     private static final int STORE_COUNT = 3;
-    private static final double START_LAT = 37.5445;
-    private static final double START_LNG = 127.0557;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
@@ -120,19 +118,24 @@ class SavedCourseDetailTest {
     }
 
     /**
-     * 추천 응답을 그대로 돌려보낸 저장 요청(출발점 nil UUID 포함)이 받아지고,
-     * 조회하면 저장한 좌표에 출발점이 다시 선다. null 필드도 키는 그대로 실린다.
+     * 출발 좌표 없이 저장해도 서버가 첫 가게 좌표로 채워, 조회하면 그 자리에 출발점이 선다.
+     * null 필드도 키는 그대로 실린다.
      */
     @Test
-    void 저장한_출발점이_조회_맨_앞에_나온다() throws Exception {
+    void 첫_가게_좌표에_출발점이_나온다() throws Exception {
         UUID courseId = saveCourseViaApi();
+
+        SavedCourse saved = savedCourseRepository.findWithStoresByCourseId(courseId).orElseThrow();
+        assertThat(saved.getStartLat()).isEqualTo(stores.get(0).getLat());
+        assertThat(saved.getStartLng()).isEqualTo(stores.get(0).getLng());
 
         JsonNode start = getJson("/courses/" + courseId + "?demo=true").path("stores").get(0);
 
         assertThat(start.path("storeId").asString()).isEqualTo("00000000-0000-0000-0000-000000000000");
         assertThat(start.path("name").asString()).isEqualTo("출발점");
-        assertThat(start.path("lat").asDouble()).isEqualTo(START_LAT);
-        assertThat(start.path("lng").asDouble()).isEqualTo(START_LNG);
+        assertThat(start.path("lat").asDouble()).isEqualTo(stores.get(0).getLat());
+        assertThat(start.path("lng").asDouble()).isEqualTo(stores.get(0).getLng());
+        assertThat(start.path("arrivalOrder").asInt()).isZero();
         assertThat(start.has("type") && start.path("type").isNull()).isTrue();
         assertThat(start.has("address") && start.path("address").isNull()).isTrue();
         assertThat(start.has("status") && start.path("status").isNull()).isTrue();
@@ -222,8 +225,8 @@ class SavedCourseDetailTest {
 
     /**
      * 3지점, 목적 2개짜리 코스를 API로 저장한다.
-     * 프론트처럼 추천 응답을 그대로 돌려보낸다 — storeIds 맨 앞에 출발점 nil UUID가 섞이고,
-     * 출발 좌표는 stores[0]의 값이다.
+     * storeIds 맨 앞에 출발점 nil UUID가 섞여 와도 받아지는지 함께 본다.
+     * 출발 좌표는 보내지 않는다 — 서버가 첫 가게 좌표로 채운다.
      *
      * demo=true로 저장한다 — 조회도 같은 모드로 하지 않으면 코스가 없는 것으로 보인다.
      * 저장과 조회의 모드는 반드시 짝을 맞춘다.
@@ -236,14 +239,12 @@ class SavedCourseDetailTest {
                   "purposes": ["CAFE", "WALK"],
                   "duration": "HALF_DAY",
                   "description": null,
-                  "storeIds": ["00000000-0000-0000-0000-000000000000", %s],
-                  "startLat": %s,
-                  "startLng": %s
+                  "storeIds": ["00000000-0000-0000-0000-000000000000", %s]
                 }
                 """.formatted(stores.stream()
                 .map(store -> "\"" + store.getStoreId() + "\"")
                 .reduce((a, b) -> a + ", " + b)
-                .orElseThrow(), START_LAT, START_LNG);
+                .orElseThrow());
 
         String response = mockMvc.perform(post("/courses?demo=true")
                         .with(authentication(auth()))
