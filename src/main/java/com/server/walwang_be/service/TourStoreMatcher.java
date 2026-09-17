@@ -89,7 +89,7 @@ public class TourStoreMatcher {
                     scored.store().getName(), scored.store().getAddress(),
                     scored.store().getDistance(), candidates.size(), name, scored.similarity());
 
-            matched.put(point.title(), match);
+            matched.put(point.key(), match);
             hits.add(new Pair(point.title(), match));
         }
         stages.add(new Stage(name, hits.size(), matched.size(), hits));
@@ -160,7 +160,7 @@ public class TourStoreMatcher {
                     scored.store().getName(), scored.store().getAddress(),
                     scored.store().getDistance(), candidates.size(), name, scored.similarity());
 
-            matched.put(point.title(), match);
+            matched.put(point.key(), match);
             hits.add(new Pair(point.title(), match));
         }
         stages.add(new Stage(name, hits.size(), matched.size(), hits));
@@ -175,16 +175,20 @@ public class TourStoreMatcher {
                                         Map<String, Match> matched,
                                         List<TourPoint> unmatched) {
         Map<UUID, List<String>> byStore = new LinkedHashMap<>();
-        matched.forEach((title, match) ->
-                byStore.computeIfAbsent(match.storeId(), key -> new ArrayList<>()).add(title));
+        matched.forEach((pointKey, match) ->
+                byStore.computeIfAbsent(match.storeId(), key -> new ArrayList<>()).add(pointKey));
 
+        // 가게 이름만 키로 쓰면 이름이 같은 다른 지점(체인)끼리 덮어써 한쪽 중복이 지워지지 않는다.
         Map<String, List<String>> dropped = new LinkedHashMap<>();
-        byStore.forEach((storeId, titles) -> {
-            if (titles.size() > 1) {
-                dropped.put(matched.get(titles.get(0)).storeName(), List.copyOf(titles));
+        List<String> toRemove = new ArrayList<>();
+        byStore.forEach((storeId, pointKeys) -> {
+            if (pointKeys.size() > 1) {
+                dropped.put(matched.get(pointKeys.get(0)).storeName() + " [" + storeId + "]",
+                        List.copyOf(pointKeys));
+                toRemove.addAll(pointKeys);
             }
         });
-        dropped.values().forEach(titles -> titles.forEach(matched::remove));
+        toRemove.forEach(matched::remove);
 
         return new StagedResult(total, stages, matched, unmatched, dropped);
     }
@@ -310,6 +314,14 @@ public class TourStoreMatcher {
 
     /** 맞춰볼 대상 하나. */
     public record TourPoint(String title, double lat, double lng) {
+
+        /**
+         * 결과를 쌓을 때 쓰는 키. 제목만 쓰면 같은 이름의 공사 항목(다른 지점)이 서로를 덮어써,
+         * 어느 지점들이 함께 들어왔느냐에 따라 판정이 달라진다 — 넓은 지도와 좁은 대안이 어긋난다.
+         */
+        public String key() {
+            return title + " @" + lat + "," + lng;
+        }
     }
 
     public record Match(UUID storeId, String externalId, String storeName, String address,
@@ -326,7 +338,8 @@ public class TourStoreMatcher {
     /**
      * 전체 결과.
      *
-     * @param droppedDuplicates 한 가게에 둘 이상 붙어 버려진 쌍
+     * @param matched           공사 지점 키(TourPoint.key — 제목 @ 좌표) → 붙은 가게
+     * @param droppedDuplicates "가게 이름 [id]" → 그 가게에 함께 붙어 버려진 지점 키들
      */
     public record StagedResult(int total, List<Stage> stages,
                                Map<String, Match> matched, List<TourPoint> unmatched,

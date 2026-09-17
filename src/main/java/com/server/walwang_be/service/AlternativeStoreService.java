@@ -54,8 +54,12 @@ public class AlternativeStoreService {
         Store base = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NoSuchElementException("존재하지 않는 가게입니다."));
 
-        List<Store> nearby = storeRepository.findWithinRadius(
-                base.getLat(), base.getLng(), RADIUS_METERS);
+        // 매칭은 넓은 후보(반경 + 600m)와 견줘야 정확하다. 같은 업종만 넣거나 1km 로만 읽고 돌리면
+        // 진짜 주인이 빠진 채 엉뚱한 가게가 공사 항목에 붙는다. 지도·코스와 같은 셈(TourVerifier.within).
+        // 공사 응답은 요청 범위(TourDataProvider)에서만 쓰고 저장하지 않는다.
+        // 공사 API가 실패하면 verified 가 비어 리뷰 근거(POSSIBLE)만으로 고른다 — 대안 조회는 실패하지 않는다.
+        TourVerifier.Scope scope = tourVerifier.within(base.getLat(), base.getLng(), RADIUS_METERS);
+        List<Store> nearby = scope.stores();
 
         // 같은 업종만 남긴다. 카페에서 거절당한 사람에게 약국을 권할 수는 없다.
         // 기준 가게 자신도 여기서 뺀다.
@@ -68,9 +72,7 @@ public class AlternativeStoreService {
             return List.of();
         }
 
-        // 매칭은 넓은 후보와 견줘야 정확하다. 같은 업종만 넣고 돌리면
-        // 진짜 주인이 빠진 채 엉뚱한 가게가 공사 항목에 붙는다.
-        Set<UUID> verified = tourVerifier.verifiedAmong(nearby);
+        Set<UUID> verified = scope.verified();
         Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(sameCategory, size, demo);
 
         List<Store> candidates = sameCategory.stream()
@@ -80,8 +82,10 @@ public class AlternativeStoreService {
                 .limit(LIMIT)
                 .toList();
 
-        log.info("대안 조회: 기준 {} ({}), 반경 {}m 안 같은 업종 {}곳 -> {}곳",
-                storeId, base.getType(), RADIUS_METERS, sameCategory.size(), candidates.size());
+        log.info("대안 조회: 기준 {} ({}), 반경 {}m 안 같은 업종 {}곳(공사 매칭 {}곳) -> {}곳 [매칭 후보 {}곳]",
+                storeId, base.getType(), RADIUS_METERS, sameCategory.size(),
+                sameCategory.stream().filter(store -> verified.contains(store.getStoreId())).count(),
+                candidates.size(), scope.poolSize());
 
         return storeCandidates.toResponses(
                 candidates, statusByStore, storeCandidates.tags(candidates, demo), demo);

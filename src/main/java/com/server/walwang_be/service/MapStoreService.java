@@ -5,7 +5,6 @@ import com.server.walwang_be.entity.AvailabilityStatus;
 import com.server.walwang_be.entity.DogSize;
 import com.server.walwang_be.entity.Store;
 import com.server.walwang_be.entity.StoreSizeStatus;
-import com.server.walwang_be.repo.StoreRepository;
 import com.server.walwang_be.repo.StoreSizeStatusRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,7 +32,6 @@ import java.util.stream.Collectors;
 public class MapStoreService {
 
     private final TourVerifier tourVerifier;
-    private final StoreRepository storeRepository;
     private final StoreService storeService;
     private final StoreSizeStatusRepository storeSizeStatusRepository;
 
@@ -46,20 +43,14 @@ public class MapStoreService {
      */
     public List<StoreCardResponse> findVerifiedNearby(double lat, double lng, int radius,
                                                      DogSize size, boolean demo) {
-        // 후보를 한 번만 읽어 매칭에 재사용한다. 지점마다 반경 쿼리를 던지면
-        // 항목 수 × 단계 수만큼 왕복이 생겨 원격 DB에서는 그것만으로 몇 초가 걸린다.
-        long startedAt = System.currentTimeMillis();
-        List<Store> pool = storeRepository.findWithinRadius(lat, lng, poolRadius(radius));
-        log.info("지도 후보 조회: {}건 ({}ms)", pool.size(), System.currentTimeMillis() - startedAt);
-
-        Set<UUID> verified = tourVerifier.verifiedAmong(pool);
-        if (verified.isEmpty()) {
+        // 후보를 반경 + 600m 로 한 번 읽어 매칭하고, 화면(요청 반경) 안으로 다시 좁힌다.
+        // 코스·대안·상세와 같은 셈이라 같은 가게는 어느 화면에서든 같은 판정을 받는다.
+        TourVerifier.Scope scope = tourVerifier.within(lat, lng, radius);
+        if (scope.verified().isEmpty()) {
             return List.of();
         }
-        // 지도는 화면 안만 보여준다. 매칭에 쓴 후보 중 요청 반경 안의 것만 남긴다.
-        List<Store> inView = pool.stream()
-                .filter(store -> verified.contains(store.getStoreId()))
-                .filter(store -> GeoDistance.between(lat, lng, store.getLat(), store.getLng()) <= radius)
+        List<Store> inView = scope.stores().stream()
+                .filter(scope::isVerified)
                 .toList();
 
         // 크기별 상태는 StoreService가 한 번에 읽어 붙인다(N+1 방지).
@@ -89,20 +80,5 @@ public class MapStoreService {
                 })
                 .toList();
     }
-
-    /**
-     * 후보를 읽을 반경.
-     *
-     * 화면 밖 공사 지점도 매칭에 쓰이려면 요청 반경보다 넓게 읽어야 한다 —
-     * 매칭 규칙이 최대 300m까지 보기 때문이다.
-     */
-    private int poolRadius(int radius) {
-        return radius + (int) TourStoreMatcher.WIDE_RADIUS_METERS;
-    }
-
-    /**
-     * 공사 데이터를 좌표 목록으로 바꾼다.
-     * 실패는 삼키고 빈 목록으로 돌린다 — 지도는 떠야 한다.
-     */
 
 }

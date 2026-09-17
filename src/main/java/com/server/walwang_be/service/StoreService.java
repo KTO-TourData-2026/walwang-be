@@ -47,9 +47,6 @@ public class StoreService {
     private static final int SEARCH_LIMIT = 50;
     /** 상세 화면에 띄울 리뷰 사진 개수. */
     private static final int THUMBNAIL_LIMIT = 5;
-    /** 매칭 판정에 쓸 후보 반경. 공사 지점 반경(300m)의 두 배다. */
-    private static final int MATCH_POOL_RADIUS_METERS =
-            (int) (TourStoreMatcher.WIDE_RADIUS_METERS * 2);
 
     private final StoreRepository storeRepository;
     private final TourVerifier tourVerifier;
@@ -145,13 +142,9 @@ public class StoreService {
      * 참고 배지 하나 때문에 가게 정보를 못 보게 되는 쪽이 더 나쁘다.
      */
     private boolean petVerified(Store store) {
-        // 판정에 영향을 주는 이웃까지 담는다. 근처 공사 지점(300m)의 진짜 주인이
-        // 그 지점에서 다시 300m 떨어져 있을 수 있어 두 배로 잡는다.
-        List<Store> pool = storeRepository.findWithinRadius(
-                store.getLat(), store.getLng(), MATCH_POOL_RADIUS_METERS);
-
-        return tourVerifier.verifiedNear(pool, store.getLat(), store.getLng(),
-                TourStoreMatcher.WIDE_RADIUS_METERS).contains(store.getStoreId());
+        // 반경 0 으로 부르면 공사 지점 300m / 후보 600m 가 된다. 지도·코스·대안과 같은 셈이라
+        // 목록에서 매칭으로 보였던 가게는 상세에서도 매칭으로 나온다.
+        return tourVerifier.within(store.getLat(), store.getLng(), 0).isVerified(store);
     }
 
     /**

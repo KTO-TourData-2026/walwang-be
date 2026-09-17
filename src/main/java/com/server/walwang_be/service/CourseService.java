@@ -76,11 +76,14 @@ public class CourseService {
      */
     public CourseResponse recommend(CourseRecommendRequest request, boolean demo) {
         CourseDuration duration = request.duration();
-        List<Store> nearby = storeRepository.findWithinRadius(
+        // 공사 매칭은 검색 반경보다 넓게(반경 + 600m) 읽어 판정하고, 후보는 검색 반경으로 좁혀 받는다.
+        // 지도·대안과 같은 셈이라 같은 가게는 어느 화면에서든 같은 판정을 받는다.
+        TourVerifier.Scope scope = tourVerifier.within(
                 request.lat(), request.lng(), duration.searchRadius());
+        List<Store> nearby = scope.stores();
 
         // 공사 목록과 리뷰 점수, 두 갈래의 근거를 모아 후보를 고른다.
-        Set<UUID> verified = tourVerifier.verifiedAmong(nearby);
+        Set<UUID> verified = scope.verified();
         Map<UUID, StoreSizeStatus> statusByStore = storeCandidates.statuses(nearby, request.dogSize(), demo);
 
         List<Store> pool = nearby.stream()

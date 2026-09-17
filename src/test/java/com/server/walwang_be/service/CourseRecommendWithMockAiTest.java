@@ -88,8 +88,8 @@ class CourseRecommendWithMockAiTest {
         List<Store> nearby = List.of(near, mid, far);
 
         given(storeRepository.findWithinRadius(anyDouble(), anyDouble(), anyInt())).willReturn(nearby);
-        given(tourVerifier.verifiedAmong(any())).willReturn(
-                nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()));
+        given(tourVerifier.within(anyDouble(), anyDouble(), anyInt())).willReturn(new TourVerifier.Scope(
+                nearby, nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()), nearby.size()));
         given(storeCandidates.statuses(any(), any(), anyBoolean())).willReturn(Map.of());
         given(storeCandidates.hasEvidence(any(), any(), any())).willReturn(true);
         given(storeCandidates.tags(any(), anyBoolean())).willReturn(Map.of());

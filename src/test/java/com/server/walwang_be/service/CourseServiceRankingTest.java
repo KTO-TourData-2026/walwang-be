@@ -179,6 +179,31 @@ class CourseServiceRankingTest {
         verify(placeEmbeddingRepository, never()).rankBySimilarity(any(), any(), anyBoolean());
     }
 
+    /**
+     * 공사 매칭은 지도·대안과 같은 진입점(TourVerifier.within)에서 검색 반경으로 받고,
+     * 그 판정을 그대로 후보 자격에 넘긴다. 반경 안 가게만 따로 읽어 매칭하면 경계에서 판정이 어긋난다.
+     */
+    @Test
+    void 공사_매칭은_검색_반경으로_공통_진입점에서_받아_후보_판정에_쓴다() {
+        Store matched = store(1);
+        Store unmatched = store(2);
+        List<Store> nearby = List.of(matched, unmatched);
+        java.util.Set<UUID> verified = java.util.Set.of(matched.getStoreId());
+        given(tourVerifier.within(anyDouble(), anyDouble(), anyInt()))
+                .willReturn(new TourVerifier.Scope(nearby, verified, 5));
+
+        for (CourseDuration duration : CourseDuration.values()) {
+            courseService.recommend(request(List.of(), duration), false);
+            verify(tourVerifier).within(CENTER_LAT, CENTER_LNG, duration.searchRadius());
+        }
+
+        verify(storeRepository, never()).findWithinRadius(anyDouble(), anyDouble(), anyInt());
+        verify(storeCandidates, org.mockito.Mockito.atLeastOnce())
+                .hasEvidence(eq(matched), eq(verified), any());
+        verify(storeCandidates, org.mockito.Mockito.atLeastOnce())
+                .hasEvidence(eq(unmatched), eq(verified), any());
+    }
+
     /** 코스에 실제로 담긴 가게를 방문 순서대로. */
     private List<Store> route() {
         ArgumentCaptor<List<Store>> captor = ArgumentCaptor.captor();
@@ -189,8 +214,8 @@ class CourseServiceRankingTest {
     private void givenNearby(Store... stores) {
         List<Store> nearby = List.of(stores);
         given(storeRepository.findWithinRadius(anyDouble(), anyDouble(), anyInt())).willReturn(nearby);
-        given(tourVerifier.verifiedAmong(any())).willReturn(
-                nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()));
+        given(tourVerifier.within(anyDouble(), anyDouble(), anyInt())).willReturn(new TourVerifier.Scope(
+                nearby, nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()), nearby.size()));
     }
 
     /** AI가 이 순서로 잘 맞는다고 답했다고 둔다. */

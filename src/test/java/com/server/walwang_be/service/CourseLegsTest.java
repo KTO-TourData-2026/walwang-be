@@ -199,8 +199,8 @@ class CourseLegsTest {
         List<Store> nearby = List.of(stores);
         given(storeRepository.findWithinRadius(anyDouble(), anyDouble(), anyInt()))
                 .willReturn(nearby);
-        given(tourVerifier.verifiedAmong(any())).willReturn(
-                nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()));
+        given(tourVerifier.within(anyDouble(), anyDouble(), anyInt())).willReturn(new TourVerifier.Scope(
+                nearby, nearby.stream().map(Store::getStoreId).collect(Collectors.toSet()), nearby.size()));
         // legs와 짝을 맞춰 볼 것은 개수뿐이라, 코스에 담긴 가게 수만 그대로 되돌려 준다.
         given(storeCandidates.toResponses(any(), any(), any(), anyBoolean()))
                 .willAnswer(call -> Collections.<CourseStoreResponse>nCopies(
