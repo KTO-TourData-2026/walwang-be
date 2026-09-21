@@ -60,7 +60,12 @@ public class StoreSizeStatus {
     @Column(name = "impossible_score", nullable = false)
     private double impossibleScore;
 
-    /** 화면에 그대로 노출하는 원본 건수. score와 달리 가중치가 없다. */
+    /**
+     * 화면에 그대로 노출하는 원본 건수. score와 달리 가중치가 없다.
+     *
+     * 등급 판정의 표본 하한도 이 값으로 본다 — 늙지 않는 값이라야
+     * 리뷰가 그대로인 가게의 등급이 시간만으로 떨어지지 않는다(AvailabilityStatus).
+     */
     @Column(name = "possible_count", nullable = false)
     private int possibleCount;
 
@@ -103,6 +108,6 @@ public class StoreSizeStatus {
 
     /** 저장된 값이 아니라 매번 계산한 등급. */
     public AvailabilityStatus status() {
-        return AvailabilityStatus.of(possibleScore, impossibleScore);
+        return AvailabilityStatus.of(possibleScore, impossibleScore, possibleCount, impossibleCount);
     }
 }

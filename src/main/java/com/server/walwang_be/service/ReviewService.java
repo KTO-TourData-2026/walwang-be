@@ -54,7 +54,19 @@ public class ReviewService {
      * 리뷰 점수가 절반으로 줄어드는 데 걸리는 기간.
      * 1년 전 "출입 가능"이 어제 것과 같은 무게를 가지면 안 되기 때문에 둔다.
      */
-    private static final double HALF_LIFE_DAYS = 180.0;
+    private static final double HALF_LIFE_DAYS = 90.0;
+
+    /**
+     * 리뷰 한 건의 최소 무게.
+     *
+     * 하한이 없으면 오래된 리뷰의 무게가 0으로 수렴해, 리뷰가 아무리 많아도
+     * 가게가 결국 UNKNOWN으로 떨어진다. 옛 정보라도 아주 없는 것보다는 낫다.
+     *
+     * 하한에 닿는 시점은 HALF_LIFE_DAYS * log2(1/MIN_WEIGHT), 약 156일이다.
+     * 그 뒤로는 모든 리뷰가 같은 무게라 점수 비율이 건수 비율로 수렴하고 더 움직이지 않는다 —
+     * 저장된 점수가 시간이 지나 낡는 폭도 여기서 멈춘다.
+     */
+    private static final double MIN_WEIGHT = 0.3;
 
     private static final long MAX_RECEIPT_BYTES = 10L * 1024 * 1024;
     private static final Set<String> ALLOWED_IMAGE_TYPES =
@@ -426,11 +438,14 @@ public class ReviewService {
         existing.values().forEach(row -> row.applyRecomputed(0));
     }
 
-    /** 오래된 리뷰일수록 가볍게 센다. HALF_LIFE_DAYS마다 무게가 절반이 된다. */
+    /**
+     * 오래된 리뷰일수록 가볍게 센다. HALF_LIFE_DAYS마다 무게가 절반이 되고,
+     * MIN_WEIGHT 아래로는 내려가지 않는다.
+     */
     private double weight(Instant createdAt, Instant now) {
         double days = (double) Duration.between(createdAt, now).toSeconds()
                 / Duration.ofDays(1).toSeconds();
-        return Math.pow(0.5, days / HALF_LIFE_DAYS);
+        return Math.max(MIN_WEIGHT, Math.pow(0.5, days / HALF_LIFE_DAYS));
     }
 
     private StoreStatusSummary summarize(Store store, boolean demo) {

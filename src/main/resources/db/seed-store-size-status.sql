@@ -17,10 +17,10 @@
 -- 세 단계로 나누려면 enum 부터 바꿔야 하고, 그러면
 -- reviews.dog_size 에 이미 쌓인 값도 함께 옮겨야 한다.
 --
--- 등급(status) 컬럼은 이 테이블에 없다. 점수만 저장하고
--- 조회할 때 AvailabilityStatus.of(possible_score, impossible_score) 로 계산한다 —
--- 임계값을 바꿨을 때 저장된 데이터를 손대지 않고 곧바로 반영하기 위해서다.
--- 점수가 0이면 그 계산이 UNKNOWN 을 돌려주므로, 0 으로 넣는 것이 곧 unknown 이다.
+-- 등급(status) 컬럼은 이 테이블에 없다. 점수와 건수만 저장하고 조회할 때
+-- AvailabilityStatus.of(possible_score, impossible_score, possible_count, impossible_count)
+-- 로 계산한다 — 임계값을 바꿨을 때 저장된 데이터를 손대지 않고 곧바로 반영하기 위해서다.
+-- 건수가 0이면 그 계산이 UNKNOWN 을 돌려주므로, 0 으로 넣는 것이 곧 unknown 이다.
 -- ---------------------------------------------------------------
 
 INSERT INTO store_size_status (

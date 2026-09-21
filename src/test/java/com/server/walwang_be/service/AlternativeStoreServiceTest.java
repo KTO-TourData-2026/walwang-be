@@ -114,10 +114,11 @@ class AlternativeStoreServiceTest {
         });
 
         List<StoreSizeStatus> statuses = new ArrayList<>();
-        statuses.add(status(bluebottle, 2.0, 0.0));
-        statuses.add(status(anion, 0.0, 2.0));
-        statuses.add(status(convenience, 2.0, 0.0));
-        statuses.add(status(far, 2.0, 0.0));
+        // 건수가 등급의 표본 하한이다(AvailabilityStatus) — POSSIBLE은 4건, IMPOSSIBLE은 3건부터다.
+        statuses.add(status(bluebottle, 4.0, 0.0));
+        statuses.add(status(anion, 0.0, 3.0));
+        statuses.add(status(convenience, 4.0, 0.0));
+        statuses.add(status(far, 4.0, 0.0));
         given(storeSizeStatusRepository.findByStore_StoreIdInAndDemo(any(), eq(false))).willReturn(statuses);
         given(storeTagCountRepository.findByStore_StoreIdInAndDemo(any(), eq(false))).willReturn(List.of());
 
