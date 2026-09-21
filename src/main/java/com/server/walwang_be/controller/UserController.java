@@ -136,7 +136,9 @@ public class UserController {
 
     /**
      * 마이 화면. 닉네임과 함께 리뷰 수·모은 도장 수·저장 장소 수가 나간다.
-     * demo는 도장 수에만 걸린다 — 여권 목록과 같은 값을 보내야 개수가 맞는다.
+     *
+     * demo는 저장 장소 수에만 걸린다 — 저장 목록만 축을 가르기 때문이다.
+     * 리뷰 수·도장 수는 각 목록처럼 시연 쪽까지 함께 센다.
      */
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> findMe(
@@ -145,7 +147,10 @@ public class UserController {
         return ResponseEntity.ok(userService.findMe(userId, demo));
     }
 
-    /** 내가 쓴 리뷰 목록. 최신순. */
+    /**
+     * 내가 쓴 리뷰 목록. 최신순. 시연 리뷰도 함께 나간다.
+     * demo는 목록을 거르지 않고 가게 이름(가명)에만 쓴다.
+     */
     @GetMapping("/me/reviews")
     public ResponseEntity<List<MyReviewResponse>> findMyReviews(
             @AuthenticationPrincipal UUID userId,
@@ -184,17 +189,22 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
-    /** 여권 미리보기. 최신 도장부터. demo가 정한 쪽 도장만 나간다. */
+    /**
+     * 여권 미리보기. 최신 도장부터. 시연 도장과 실제 도장이 함께 나간다.
+     *
+     * demo는 받기만 하고 쓰지 않는다. 배포된 앱이 계속 붙여 보내므로 파라미터를 빼면
+     * 요청이 깨질 수 있어 남겨 둔다. 앱이 더 이상 보내지 않게 되면 지워도 된다.
+     */
     @GetMapping("/me/passport")
     public ResponseEntity<List<PassportSummaryResponse>> findMyPassport(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(10) int size,
             @RequestParam(defaultValue = "false") boolean demo) {
-        return ResponseEntity.ok(passportService.findMine(userId, page, size, demo));
+        return ResponseEntity.ok(passportService.findMine(userId, page, size));
     }
 
-    /** 여권 도장 상세. 남의 여권이면 403, 지금 모드에 없는 도장이면 404. */
+    /** 여권 도장 상세. 남의 여권이면 403. 축으로는 끊지 않는다 — demo는 가게 이름에만 쓴다. */
     @GetMapping("/me/passport/{passportId}")
     public ResponseEntity<PassportDetailResponse> findMyPassportDetail(
             @AuthenticationPrincipal UUID userId,

@@ -50,8 +50,11 @@ public class UserService {
     /**
      * 마이 화면. 리뷰·도장·저장 개수는 목록 API가 페이징이라 여기서 따로 센다.
      *
-     * @param demo 세 숫자를 모두 같은 축으로 센다 — 한쪽만 갈리면
-     *             마이 화면에서 숫자들이 서로 어긋난다.
+     * 숫자는 저마다 대응하는 목록과 같은 기준으로 센다 — 어긋나면 "리뷰 5개"라고 적힌 화면에
+     * 리뷰가 8개 나온다. 리뷰·도장은 목록이 축을 섞으므로 여기서도 섞어 세고,
+     * 저장 장소는 목록이 축을 가르므로 demo가 정한 쪽만 센다.
+     *
+     * @param demo 저장 장소 수에만 걸린다
      */
     @Transactional(readOnly = true)
     public UserProfileResponse findMe(UUID userId, boolean demo) {
@@ -59,21 +62,23 @@ public class UserService {
                 .orElseThrow(() -> new BadCredentialsException("존재하지 않는 사용자입니다."));
 
         return UserProfileResponse.of(user,
-                reviewRepository.countByUser_UserIdAndDemoAndBlindStatus(
-                        userId, demo, BlindStatus.NORMAL),
-                passportRepository.countByUser_UserIdAndDemo(userId, demo),
+                reviewRepository.countByUser_UserIdAndBlindStatus(userId, BlindStatus.NORMAL),
+                passportRepository.countByUser_UserId(userId),
                 savedStoreRepository.countByUser_UserIdAndDemo(userId, demo));
     }
 
     /**
      * 내가 쓴 리뷰 목록. 최신순.
      * 인증을 거치지 않은 리뷰도 내 것이면 그대로 나온다 — 남에게만 안 보일 뿐이다.
+     * 시연 리뷰도 함께 나온다(ReviewRepository).
+     *
+     * @param demo 가게 이름에만 쓴다 — 시연 모드면 가명으로 나간다. 목록을 거르지는 않는다.
      */
     @Transactional(readOnly = true)
     public List<MyReviewResponse> findMyReviews(UUID userId, int page, int size, boolean demo) {
         return reviewRepository
-                .findByUser_UserIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
-                        userId, demo, BlindStatus.NORMAL, PageRequest.of(page, size))
+                .findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
+                        userId, BlindStatus.NORMAL, PageRequest.of(page, size))
                 .map(review -> MyReviewResponse.from(review, demo))
                 .getContent();
     }

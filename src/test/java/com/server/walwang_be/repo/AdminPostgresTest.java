@@ -120,6 +120,8 @@ class AdminPostgresTest {
     @Autowired
     ReviewRepository reviewRepository;
     @Autowired
+    PassportRepository passportRepository;
+    @Autowired
     EntityManager entityManager;
     @Autowired
     DataSource dataSource;
@@ -470,6 +472,55 @@ class AdminPostgresTest {
                 store.getStoreId(), BlindStatus.NORMAL, null, PageRequest.of(0, 20)).getContent())
                 .extracting(Review::getContent)
                 .containsExactlyInAnyOrder("실제 리뷰", "시연용 목 리뷰");
+    }
+
+    /**
+     * 마이 화면의 내가 쓴 리뷰·여권도 축을 섞는다.
+     *
+     * 가게 상세와 달리 user_id 로 먼저 거르므로, 섞이는 건 내 것뿐이다 —
+     * 남이 시연 모드에서 쓴 리뷰는 축과 무관하게 애초에 들어오지 않는다.
+     * 목록과 카운트를 함께 본다. 한쪽만 갈리면 화면의 숫자와 목록이 어긋난다.
+     */
+    @Test
+    void 내가_쓴_리뷰와_여권은_실제와_시연을_함께_보여준다() {
+        User me = persist(User.builder().email("mypage@example.com").password("x").nickname("나").build());
+        User other = persist(User.builder().email("mypage-other@example.com").password("x").nickname("남").build());
+        Store store = recomputeStore("mypage-mixed");
+
+        Review real = persist(Review.builder().user(me).store(store).dogAllowed(true)
+                .dogSize(DogSize.SMALL_MEDIUM).content("실제 리뷰").demo(false).verified(true).build());
+        // 시연 모드에서 직접 쓴 리뷰다 — 내 것이라 인증을 거치지 않았어도 내 목록에는 나온다.
+        Review mock = persist(Review.builder().user(me).store(store).dogAllowed(true)
+                .dogSize(DogSize.LARGE).content("시연 리뷰").demo(true).verified(false).build());
+        // 가려진 내 리뷰는 축과 무관하게 빠진다.
+        persist(Review.builder().user(me).store(store).dogAllowed(false)
+                .dogSize(DogSize.LARGE).content("가려진 내 리뷰").demo(true).verified(true).build()).blind();
+        // 남의 시연 리뷰는 user_id 에서 걸린다.
+        persist(Review.builder().user(other).store(store).dogAllowed(true)
+                .dogSize(DogSize.LARGE).content("남의 시연 리뷰").demo(true).verified(true).build());
+
+        persist(Passport.builder().user(me).store(store).review(real)
+                .status(StampStatus.FALLBACK).demo(false).build());
+        persist(Passport.builder().user(me).store(store).review(mock)
+                .status(StampStatus.FALLBACK).demo(true).build());
+        persist(Passport.builder().user(other).store(store).review(mock)
+                .status(StampStatus.FALLBACK).demo(true).build());
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(reviewRepository.findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
+                me.getUserId(), BlindStatus.NORMAL, PageRequest.of(0, 20)).getContent())
+                .extracting(Review::getContent)
+                .containsExactlyInAnyOrder("실제 리뷰", "시연 리뷰");
+        // 마이 화면의 리뷰 수는 목록과 같은 기준으로 센다.
+        assertThat(reviewRepository.countByUser_UserIdAndBlindStatus(me.getUserId(), BlindStatus.NORMAL))
+                .isEqualTo(2);
+
+        assertThat(passportRepository.findByUser_UserIdOrderByCreatedAtDesc(
+                me.getUserId(), PageRequest.of(0, 10)).getContent())
+                .extracting(passport -> passport.getReview().getContent())
+                .containsExactlyInAnyOrder("실제 리뷰", "시연 리뷰");
+        assertThat(passportRepository.countByUser_UserId(me.getUserId())).isEqualTo(2);
     }
 
     private Store recomputeStore(String externalId) {

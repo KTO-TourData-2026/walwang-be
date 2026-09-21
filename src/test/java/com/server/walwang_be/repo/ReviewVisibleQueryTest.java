@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,5 +50,36 @@ class ReviewVisibleQueryTest {
                 "findByStore_StoreIdAndDemoAndVerifiedTrueAndBlindStatus",
                 UUID.class, boolean.class, BlindStatus.class))
                 .doesNotThrowAnyException();
+    }
+
+    /**
+     * 마이 화면(내가 쓴 리뷰·여권)도 축을 섞는다.
+     *
+     * 파생 쿼리라 조건이 메서드 이름에 들어 있다 — 이름에 Demo가 돌아오면 조건도 함께 돌아온다.
+     * 목록과 카운트를 같이 본다. 한쪽만 갈리면 화면의 숫자와 목록이 어긋난다.
+     */
+    @Test
+    void 마이_화면_조회는_demo로_거르지_않는다() {
+        assertThat(methodNames(ReviewRepository.class))
+                .filteredOn(name -> name.contains("ByUser_UserId"))
+                .isNotEmpty()
+                .noneMatch(name -> name.contains("Demo"));
+        assertThat(methodNames(PassportRepository.class))
+                .filteredOn(name -> name.contains("ByUser_UserId"))
+                .isNotEmpty()
+                .noneMatch(name -> name.contains("Demo"));
+    }
+
+    /** 저장 가게·코스는 반대로 축을 가른 채 둔다 — 풀면 같은 가게가 카드 두 장으로 나온다. */
+    @Test
+    void 저장_목록_조회는_demo_축을_그대로_가른다() {
+        assertThat(methodNames(SavedStoreRepository.class))
+                .contains("findByUser_UserIdAndDemoOrderByCreatedAtDesc", "countByUser_UserIdAndDemo");
+        assertThat(methodNames(SavedCourseRepository.class))
+                .contains("findByUser_UserIdAndDemoOrderByCreatedAtDesc");
+    }
+
+    private static List<String> methodNames(Class<?> repository) {
+        return Arrays.stream(repository.getDeclaredMethods()).map(Method::getName).toList();
     }
 }

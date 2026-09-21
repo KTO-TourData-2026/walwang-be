@@ -74,15 +74,17 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * tags는 컬렉션이라 넣지 않는다 — 페이징이 메모리에서 일어나 버린다.
      *
      * verified로는 거르지 않는다 — 인증을 건너뛴 리뷰도 내 것이면 보여야 한다.
-     * 여권과 같은 demo 축으로 갈라야 마이 화면에서 리뷰 수와 도장 수가 어긋나지 않는다.
+     *
+     * demo 축으로도 거르지 않는다 — 가게 리뷰 목록(findVisibleByStore)과 같은 이유로,
+     * 시연용 목 리뷰와 시연 모드에서 쓴 리뷰가 실제 모드 마이 화면에도 보인다.
+     * 아래 카운트도 같은 축으로 세야 화면의 리뷰 수와 목록이 어긋나지 않는다.
      */
     @EntityGraph(attributePaths = "store")
-    Page<Review> findByUser_UserIdAndDemoAndBlindStatusOrderByCreatedAtDesc(
-            UUID userId, boolean demo, BlindStatus blindStatus, Pageable pageable);
+    Page<Review> findByUser_UserIdAndBlindStatusOrderByCreatedAtDesc(
+            UUID userId, BlindStatus blindStatus, Pageable pageable);
 
-    /** 마이 화면의 리뷰 수. 목록과 같은 축으로 센다(verified는 여기서도 거르지 않는다). */
-    long countByUser_UserIdAndDemoAndBlindStatus(
-            UUID userId, boolean demo, BlindStatus blindStatus);
+    /** 마이 화면의 리뷰 수. 목록과 같은 기준으로 센다(demo·verified 모두 거르지 않는다). */
+    long countByUser_UserIdAndBlindStatus(UUID userId, BlindStatus blindStatus);
 
     /**
      * 한 축(demo)에서 다시 세면 값이 달라질 수 있는 가게의 id. 일괄 재집계 대상이다.

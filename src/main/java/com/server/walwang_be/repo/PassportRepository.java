@@ -16,17 +16,16 @@ import java.util.UUID;
 public interface PassportRepository extends JpaRepository<Passport, UUID> {
 
     /**
-     * 여권 목록. 시연/실제를 갈라 읽는다 —
-     * 시연 모드를 끄면 시연 중에 찍힌 도장은 보이지 않아야 한다.
+     * 여권 목록. demo 축으로 거르지 않는다 — 시연 중에 찍힌 도장도 실제 모드에서 함께 보인다.
+     * 도장은 리뷰의 is_demo를 물려받으므로, 리뷰 목록(ReviewRepository)과 축을 맞춘 것이다.
      */
-    Page<Passport> findByUser_UserIdAndDemoOrderByCreatedAtDesc(
-            UUID userId, boolean demo, Pageable pageable);
+    Page<Passport> findByUser_UserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     /**
      * 마이 화면의 "모은 도장 수". 목록은 페이징이라 총 개수를 따로 센다.
-     * 목록과 같은 축으로 세야 개수와 실제로 보이는 도장이 어긋나지 않는다.
+     * 목록과 같은 기준으로 세야 개수와 실제로 보이는 도장이 어긋나지 않는다.
      */
-    long countByUser_UserIdAndDemo(UUID userId, boolean demo);
+    long countByUser_UserId(UUID userId);
 
     /** 상세 화면에 리뷰 사진과 가게명이 함께 들어가므로 같이 끌어온다. */
     @EntityGraph(attributePaths = {"review", "store"})

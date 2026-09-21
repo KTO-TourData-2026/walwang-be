@@ -34,11 +34,15 @@ public class PassportService {
     private final PassportRepository passportRepository;
     private final StampGenerator stampGenerator;
 
-    /** @param demo 시연 모드면 시연 도장만, 아니면 실제 도장만 나간다. */
+    /**
+     * 여권 미리보기. 시연 도장과 실제 도장이 함께 나간다(PassportRepository).
+     *
+     * demo는 받지 않는다 — 요약에는 가게 이름이 들어가지 않아 가명을 고를 일도 없다.
+     */
     @Transactional(readOnly = true)
-    public List<PassportSummaryResponse> findMine(UUID userId, int page, int size, boolean demo) {
+    public List<PassportSummaryResponse> findMine(UUID userId, int page, int size) {
         return passportRepository
-                .findByUser_UserIdAndDemoOrderByCreatedAtDesc(userId, demo, PageRequest.of(page, size))
+                .findByUser_UserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
                 .map(PassportSummaryResponse::from)
                 .getContent();
     }
@@ -46,9 +50,10 @@ public class PassportService {
     /**
      * 남의 여권은 존재를 알려주지 않고 403으로 끊는다.
      *
-     * 지금 모드에 속하지 않는 도장은 내 것이어도 404로 끊는다 — 목록에 없는 도장을
-     * 상세로는 열 수 있으면 모드를 나눈 의미가 없다. 소유자 확인을 먼저 하므로
-     * 남의 여권이 모드에 따라 404와 403을 오가지는 않는다.
+     * 축으로는 끊지 않는다 — 목록(findMine)이 시연 도장까지 보여주므로, 여기서 404를 내면
+     * 목록에 보이는 도장을 눌렀을 때 열리지 않는다.
+     *
+     * @param demo 가게 이름에만 쓴다 — 시연 모드면 가명으로 나간다
      */
     @Transactional(readOnly = true)
     public PassportDetailResponse findOne(UUID userId, UUID passportId, boolean demo) {
@@ -57,9 +62,6 @@ public class PassportService {
 
         if (!passport.getUser().getUserId().equals(userId)) {
             throw new AccessDeniedException("자신의 여권만 볼 수 있습니다.");
-        }
-        if (passport.isDemo() != demo) {
-            throw new NoSuchElementException("존재하지 않는 여권입니다.");
         }
         return PassportDetailResponse.from(passport, demo);
     }
