@@ -73,7 +73,12 @@ public class StoreController {
         return ResponseEntity.ok(storeService.findDetail(storeId, demo, userId));
     }
 
-    /** 가게의 리뷰 목록. 최신순. */
+    /**
+     * 가게의 리뷰 목록. 최신순. 실제 리뷰와 시연 리뷰가 함께 나간다.
+     *
+     * demo는 받기만 하고 쓰지 않는다. 배포된 앱이 계속 붙여 보내므로 파라미터를 빼면
+     * 요청이 깨질 수 있어 남겨 둔다. 앱이 더 이상 보내지 않게 되면 지워도 된다.
+     */
     @GetMapping("/{storeId}/reviews")
     public ResponseEntity<List<ReviewResponse>> findReviews(
             @AuthenticationPrincipal UUID userId,
@@ -81,7 +86,7 @@ public class StoreController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(defaultValue = "false") boolean demo) {
-        return ResponseEntity.ok(storeService.findReviews(storeId, page, size, demo, userId));
+        return ResponseEntity.ok(storeService.findReviews(storeId, page, size, userId));
     }
 
     /** 가게 저장. 이미 저장돼 있어도 200. demo가 정한 쪽에 담긴다. */

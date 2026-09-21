@@ -429,6 +429,49 @@ class AdminPostgresTest {
                 .containsExactly(staleDemoTag.getStoreId());
     }
 
+    /**
+     * 가게 리뷰 목록은 demo 축을 가리지 않는다.
+     *
+     * 시연용 목 리뷰(is_demo=true, verified=true)를 실제 모드 가게 상세에도 보여주려고
+     * findVisibleByStore 에서 demo 조건을 뺐다. 그 조건이 되살아나면 목 리뷰가 조용히 사라지므로
+     * 여기서 붙잡는다. 축과 무관하게 계속 빠져야 하는 것(가려진 리뷰, 남이 쓴 미인증 리뷰)도 함께 본다.
+     *
+     * 집계는 그대로 축별로 나뉜다 — 이 테스트가 말하는 건 조회뿐이다.
+     */
+    @Test
+    void 가게_리뷰_목록은_실제_리뷰와_시연_리뷰를_함께_보여준다() {
+        User author = persist(User.builder().email("both-axes@example.com").password("x").nickname("작성자").build());
+        User other = persist(User.builder().email("other-axes@example.com").password("x").nickname("남").build());
+        Store store = recomputeStore("visible-both-axes");
+
+        persist(Review.builder().user(author).store(store).dogAllowed(true)
+                .dogSize(DogSize.SMALL_MEDIUM).content("실제 리뷰").demo(false).verified(true).build());
+        persist(Review.builder().user(author).store(store).dogAllowed(true)
+                .dogSize(DogSize.LARGE).content("시연용 목 리뷰").demo(true).verified(true).build());
+        // 가려진 리뷰는 시연 축이어도 빠진다.
+        persist(Review.builder().user(author).store(store).dogAllowed(false)
+                .dogSize(DogSize.LARGE).content("가려진 목 리뷰").demo(true).verified(true).build()).blind();
+        // 남이 시연 모드에서 쓴 미인증 리뷰도 빠진다 — verified 조건은 그대로 살아 있다.
+        persist(Review.builder().user(other).store(store).dogAllowed(false)
+                .dogSize(DogSize.LARGE).content("남의 미인증 리뷰").demo(true).verified(false).build());
+        entityManager.flush();
+        entityManager.clear();
+
+        Page<Review> visible = reviewRepository.findVisibleByStore(
+                store.getStoreId(), BlindStatus.NORMAL, author.getUserId(), PageRequest.of(0, 20));
+
+        assertThat(visible.getContent()).extracting(Review::getContent)
+                .containsExactlyInAnyOrder("실제 리뷰", "시연용 목 리뷰");
+        // countQuery 에도 같은 조건이 걸려야 페이징이 어긋나지 않는다.
+        assertThat(visible.getTotalElements()).isEqualTo(2);
+
+        // 비로그인도 같게 본다. 미인증 리뷰만 빠지고 축은 여전히 섞인다.
+        assertThat(reviewRepository.findVisibleByStore(
+                store.getStoreId(), BlindStatus.NORMAL, null, PageRequest.of(0, 20)).getContent())
+                .extracting(Review::getContent)
+                .containsExactlyInAnyOrder("실제 리뷰", "시연용 목 리뷰");
+    }
+
     private Store recomputeStore(String externalId) {
         return persist(Store.builder().externalId(externalId).name(externalId)
                 .lat(37.5665).lng(126.9780).address("서울 중구").type("카페").build());

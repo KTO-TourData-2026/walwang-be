@@ -99,6 +99,9 @@ public class StoreService {
      *
      * viewerId는 썸네일을 고르는 데만 쓴다 — 인증을 거치지 않은 리뷰의 사진은
      * 작성자 본인에게만 보인다. 비로그인이면 null이 들어와 전부 빠진다.
+     *
+     * 썸네일만 demo 축을 가리지 않는다 — 리뷰 목록과 같은 쿼리를 써서 시연 리뷰 사진도 섞인다.
+     * 태그·크기별 상태·가명은 여전히 demo가 정한 쪽이다.
      */
     public StoreDetailResponse findDetail(UUID storeId, boolean demo, UUID viewerId) {
         Store store = storeRepository.findById(storeId)
@@ -123,7 +126,7 @@ public class StoreService {
                 .orElse(null);
 
         List<String> thumbnailUrls = reviewRepository
-                .findVisibleByStore(storeId, demo, BlindStatus.NORMAL, viewerId,
+                .findVisibleByStore(storeId, BlindStatus.NORMAL, viewerId,
                         PageRequest.of(0, THUMBNAIL_LIMIT))
                 .map(Review::getThumbnailUrl)
                 .getContent();
@@ -153,11 +156,12 @@ public class StoreService {
      * viewerId는 두 가지에 쓴다 — 응답의 mine을 채우고, 인증을 거치지 않은 리뷰를
      * 작성자 본인에게만 남긴다. 비로그인이면 null이 들어와 mine은 전부 false가 되고
      * verified=false인 리뷰는 하나도 나오지 않는다.
+     *
+     * demo는 받지 않는다 — 실제 리뷰와 시연 리뷰가 함께 나간다(ReviewRepository.findVisibleByStore).
      */
-    public List<ReviewResponse> findReviews(UUID storeId, int page, int size, boolean demo,
-                                            UUID viewerId) {
+    public List<ReviewResponse> findReviews(UUID storeId, int page, int size, UUID viewerId) {
         return reviewRepository
-                .findVisibleByStore(storeId, demo, BlindStatus.NORMAL, viewerId,
+                .findVisibleByStore(storeId, BlindStatus.NORMAL, viewerId,
                         PageRequest.of(page, size))
                 .map(review -> ReviewResponse.from(review, viewerId))
                 .getContent();

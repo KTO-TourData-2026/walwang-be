@@ -21,6 +21,10 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
      * 시연 모드에서 OCR 없이 쓴 리뷰라 가보지 않은 가게에도 달릴 수 있다.
      * viewerId가 null(비로그인)이면 비교가 참이 되지 않아 자연히 전부 빠진다.
      *
+     * demo 축으로 거르지 않는다 — 시연용 목 리뷰도 실제 모드 화면에 함께 보인다.
+     * 목 리뷰 본문에 시연용이라고 적어 두는 것으로 구분한다. 그래서 여기서 보이는 리뷰와
+     * 점수·태그(축별로 따로 센다)가 어긋날 수 있다.
+     *
      * 응답에 작성자 닉네임이 들어가므로 user를 함께 가져온다 —
      * 안 그러면 리뷰 수만큼 추가 쿼리가 나간다(N+1).
      *
@@ -31,7 +35,6 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     @Query(value = """
             select r from Review r
              where r.store.storeId = :storeId
-               and r.demo = :demo
                and r.blindStatus = :blindStatus
                and (r.verified = true or r.user.userId = :viewerId)
              order by r.createdAt desc
@@ -39,12 +42,10 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             countQuery = """
             select count(r) from Review r
              where r.store.storeId = :storeId
-               and r.demo = :demo
                and r.blindStatus = :blindStatus
                and (r.verified = true or r.user.userId = :viewerId)
             """)
     Page<Review> findVisibleByStore(@Param("storeId") UUID storeId,
-                                    @Param("demo") boolean demo,
                                     @Param("blindStatus") BlindStatus blindStatus,
                                     @Param("viewerId") UUID viewerId,
                                     Pageable pageable);
