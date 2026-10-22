@@ -60,7 +60,8 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // 본문 파싱 실패 등으로 ERROR 디스패치될 때 401로 둔갑하지 않도록 열어둔다.
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/user/signUp", "/user/login", "/user/reissue").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/user/signUp", "/user/login", "/user/reissue",
+                                "/user/email-verification/send", "/user/email-verification/confirm").permitAll()
                         .requestMatchers(HttpMethod.GET, "/user/check-email", "/user/check-nickname").permitAll()
                         // /user/logout 포함 나머지는 인증 필요
                         .anyRequest().authenticated())

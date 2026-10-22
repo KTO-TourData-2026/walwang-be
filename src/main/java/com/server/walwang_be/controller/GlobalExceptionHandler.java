@@ -1,6 +1,8 @@
 package com.server.walwang_be.controller;
 
+import com.server.walwang_be.client.EmailSender;
 import com.server.walwang_be.client.ReceiptOcrClient;
+import com.server.walwang_be.service.EmailVerificationService;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +56,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleOcrUnavailable(ReceiptOcrClient.OcrUnavailableException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("message", "영수증 인증 서버가 응답하지 않습니다. 잠시 후 다시 시도해 주세요."));
+    }
+
+    /** 인증 메일 발송 한도 초과 → 429. */
+    @ExceptionHandler(EmailVerificationService.TooManyRequestsException.class)
+    public ResponseEntity<Map<String, String>> handleTooManyRequests(EmailVerificationService.TooManyRequestsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("message", e.getMessage()));
+    }
+
+    /**
+     * 인증 메일 발송 실패 → 503. 사용자 잘못이 아니라 잠시 후 재시도할 일이다.
+     * IllegalStateException으로 던지면 위의 409로 둔갑하므로 전용 예외를 쓴다.
+     */
+    @ExceptionHandler(EmailSender.MailUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleMailUnavailable(EmailSender.MailUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("message", e.getMessage()));
     }
 
     /** 없는 가게·리뷰 등 대상이 존재하지 않음 → 404. */

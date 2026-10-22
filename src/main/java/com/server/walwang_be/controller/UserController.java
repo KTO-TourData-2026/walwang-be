@@ -2,6 +2,9 @@ package com.server.walwang_be.controller;
 
 import com.server.walwang_be.dto.LoginRequest;
 import com.server.walwang_be.dto.CourseRenameRequest;
+import com.server.walwang_be.dto.EmailVerificationConfirmRequest;
+import com.server.walwang_be.dto.EmailVerificationConfirmResponse;
+import com.server.walwang_be.dto.EmailVerificationSendRequest;
 import com.server.walwang_be.dto.MyReviewResponse;
 import com.server.walwang_be.dto.PassportDetailResponse;
 import com.server.walwang_be.dto.PassportSummaryResponse;
@@ -15,12 +18,15 @@ import com.server.walwang_be.dto.UserPatchRequest;
 import com.server.walwang_be.dto.UserProfileResponse;
 import com.server.walwang_be.entity.WithdrawalReason;
 import com.server.walwang_be.security.BearerTokenResolver;
+import com.server.walwang_be.security.ClientIpResolver;
 import com.server.walwang_be.service.CourseService;
+import com.server.walwang_be.service.EmailVerificationService;
 import com.server.walwang_be.service.PassportService;
 import com.server.walwang_be.service.StoreService;
 import com.server.walwang_be.service.UserService;
 import com.server.walwang_be.service.UserWithdrawalService;
 import io.swagger.v3.oas.annotations.Parameter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -54,11 +60,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final EmailVerificationService emailVerificationService;
+    private final ClientIpResolver clientIpResolver;
     private final UserWithdrawalService userWithdrawalService;
     private final PassportService passportService;
     private final StoreService storeService;
     private final CourseService courseService;
 
+    /**
+     * 가입 인증 코드 발송.
+     * 가입됐거나 차단된 주소면 409(한 문장으로 답한다), 한도 초과면 429, 발송 실패면 503.
+     */
+    @PostMapping("/email-verification/send")
+    public ResponseEntity<Void> sendVerificationCode(
+            @Valid @RequestBody EmailVerificationSendRequest request,
+            HttpServletRequest httpRequest) {
+        emailVerificationService.sendCode(request.email(), clientIpResolver.resolve(httpRequest));
+        return ResponseEntity.ok().build();
+    }
+
+    /** 인증 코드 확인. 맞으면 가입에 쓸 토큰을 준다. 틀리거나 만료됐으면 400. */
+    @PostMapping("/email-verification/confirm")
+    public ResponseEntity<EmailVerificationConfirmResponse> confirmVerificationCode(
+            @Valid @RequestBody EmailVerificationConfirmRequest request) {
+        return ResponseEntity.ok(new EmailVerificationConfirmResponse(
+                emailVerificationService.confirm(request.email(), request.code())));
+    }
+
+    /** 인증 토큰이 없거나 이 주소의 것이 아니면 403. */
     @PostMapping("/signUp")
     public ResponseEntity<Void> signUp(@Valid @RequestBody SignUpRequest request) {
         userService.signUp(request);

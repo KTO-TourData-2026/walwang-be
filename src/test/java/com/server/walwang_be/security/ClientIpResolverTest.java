@@ -1,9 +1,13 @@
 package com.server.walwang_be.security;
 
+import jakarta.servlet.http.HttpServletRequest;
+import org.apache.catalina.filters.RemoteIpFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -66,6 +70,28 @@ class ClientIpResolverTest {
     void 빈_허용목록은_아무도_들이지_않는다() {
         assertThat(IpAllowlist.of(List.of()).allows("203.0.113.10")).isFalse();
         assertThat(IpAllowlist.denyAll().allows("127.0.0.1")).isFalse();
+    }
+
+    /**
+     * server.forward-headers-strategy=native 일 때. 톰캣이 RemoteIpValve로 remoteAddr를 먼저 바꿔 둔다.
+     * 밸브와 같은 알고리즘인 RemoteIpFilter(기본 internalProxies)를 앞에 세워 실제로 거친다.
+     * 밸브도 오른쪽 끝부터 읽으므로, 클라이언트가 앞에 끼워 넣은 값은 이 경로로도 통하지 않는다.
+     */
+    @Test
+    void native_전략에서도_nginx가_붙인_오른쪽_끝_주소가_잡힌다() throws Exception {
+        assertThat(resolveBehindTomcat("127.0.0.1", "203.0.113.10")).isEqualTo("203.0.113.10");
+        assertThat(resolveBehindTomcat("127.0.0.1", "203.0.113.10, 198.51.100.7")).isEqualTo("198.51.100.7");
+    }
+
+    private String resolveBehindTomcat(String remoteAddr, String forwardedFor) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr(remoteAddr);
+        request.addHeader("X-Forwarded-For", forwardedFor);
+
+        AtomicReference<String> resolved = new AtomicReference<>();
+        new RemoteIpFilter().doFilter(request, new MockHttpServletResponse(),
+                (req, res) -> resolved.set(resolver.resolve((HttpServletRequest) req)));
+        return resolved.get();
     }
 
     private String resolve(String remoteAddr, String forwardedFor) {

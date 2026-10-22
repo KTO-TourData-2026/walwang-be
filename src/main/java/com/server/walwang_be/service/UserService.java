@@ -25,7 +25,10 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,7 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenBlacklistRepository tokenBlacklistRepository;
     private final WithdrawnEmailService withdrawnEmailService;
+    private final EmailVerificationService emailVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
 
@@ -83,8 +87,16 @@ public class UserService {
                 .getContent();
     }
 
+    /**
+     * 가입. 이메일 인증 토큰을 맨 먼저 본다 — 인증하지 않은 주소로는 가입 여부·차단 여부를
+     * 되묻는 것조차 할 수 없게 하려는 것이다. 토큰은 커밋이 확정된 뒤에 소비한다.
+     * 중간에 실패하면 다시 인증하지 않고 바로 재시도할 수 있다.
+     */
     @Transactional
     public void signUp(SignUpRequest request) {
+        Instant verifiedAt = emailVerificationService.requireVerified(
+                request.verificationToken(), request.email());
+
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalStateException("이미 가입된 이메일입니다.");
         }
@@ -101,6 +113,7 @@ public class UserService {
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
                 .nickname(request.nickname())
+                .emailVerifiedAt(verifiedAt)
                 .build());
 
         List<UserAgreement> agreements = request.agreements().stream()
@@ -111,6 +124,8 @@ public class UserService {
                         .build())
                 .toList();
         userAgreementRepository.saveAll(agreements);
+
+        afterCommit(() -> emailVerificationService.consume(request.verificationToken()));
     }
 
     @Transactional(readOnly = true)
@@ -209,6 +224,19 @@ public class UserService {
         String refreshToken = UUID.randomUUID().toString();
         refreshTokenRepository.save(refreshToken, userId);
         return new TokenResponse(accessToken, refreshToken);
+    }
+
+    private void afterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     /** 필수 약관이 모두 동의(true) 상태로 넘어왔는지 확인한다. */

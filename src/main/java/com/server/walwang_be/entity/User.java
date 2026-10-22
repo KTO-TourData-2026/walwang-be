@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -37,11 +38,19 @@ public class User {
     @Column(nullable = false, unique = true, length = 30)
     private String nickname;
 
+    /**
+     * 이메일 인증을 마친 시각. 값이 있으면 인증한 것이다(개인정보 처리방침: 인증 완료 사실과 일시).
+     * 인증이 생기기 전에 가입한 회원은 비어 있다. 탈퇴하면 행과 함께 지워진다.
+     */
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
     @Builder
-    private User(String email, String password, String nickname) {
+    private User(String email, String password, String nickname, Instant emailVerifiedAt) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
+        this.emailVerifiedAt = emailVerifiedAt;
     }
 
     public void changeNickname(String nickname) {
