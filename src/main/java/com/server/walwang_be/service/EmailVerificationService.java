@@ -84,7 +84,7 @@ public class EmailVerificationService {
         String code = newCode();
         verificationRepository.saveCode(emailHash, code);
         try {
-            emailSender.sendVerificationCode(email, code, EmailVerificationRepository.CODE_TTL);
+            emailSender.sendVerificationCode(email, code);
         } catch (EmailSender.MailUnavailableException e) {
             verificationRepository.deleteCode(emailHash);
             verificationRepository.clearCooldown(emailHash);

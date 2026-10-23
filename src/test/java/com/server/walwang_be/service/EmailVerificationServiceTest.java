@@ -54,7 +54,7 @@ class EmailVerificationServiceTest {
     // ── 발송 ─────────────────────────────────────────
 
     @Test
-    void 코드를_저장하고_같은_코드를_5분_유효로_보낸다() {
+    void 코드를_저장하고_같은_코드를_보낸다() {
         발송_한도가_남아_있다();
 
         service.sendCode(EMAIL, IP);
@@ -62,7 +62,13 @@ class EmailVerificationServiceTest {
         ArgumentCaptor<String> saved = ArgumentCaptor.forClass(String.class);
         verify(verificationRepository).saveCode(eq(HASH), saved.capture());
         assertThat(saved.getValue()).matches("\\d{6}");
-        verify(emailSender).sendVerificationCode(EMAIL, saved.getValue(), Duration.ofMinutes(5));
+        verify(emailSender).sendVerificationCode(EMAIL, saved.getValue());
+    }
+
+    @Test
+    void 코드_유효시간은_개인정보_처리방침과_메일_본문에_적힌_5분이다() {
+        // 바꾸려면 방침과 templates/mail/의 "5분간" 문구를 함께 바꿔야 한다(ResendEmailSenderTest).
+        assertThat(EmailVerificationRepository.CODE_TTL).isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test
@@ -101,7 +107,7 @@ class EmailVerificationServiceTest {
 
         service.sendCode(EMAIL, IP);
 
-        verify(emailSender).sendVerificationCode(eq(EMAIL), anyString(), any());
+        verify(emailSender).sendVerificationCode(eq(EMAIL), anyString());
     }
 
     @Test
@@ -136,7 +142,7 @@ class EmailVerificationServiceTest {
     void 발송이_실패하면_코드와_쿨다운을_거두고_503_예외를_그대로_올린다() {
         발송_한도가_남아_있다();
         willThrow(new EmailSender.MailUnavailableException("실패", null))
-                .given(emailSender).sendVerificationCode(eq(EMAIL), anyString(), any());
+                .given(emailSender).sendVerificationCode(eq(EMAIL), anyString());
 
         assertThatThrownBy(() -> service.sendCode(EMAIL, IP))
                 .isInstanceOf(EmailSender.MailUnavailableException.class);
