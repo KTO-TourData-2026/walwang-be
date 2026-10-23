@@ -62,7 +62,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(HttpMethod.POST, "/user/signUp", "/user/login", "/user/reissue",
                                 "/user/email-verification/send", "/user/email-verification/confirm").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/user/check-email", "/user/check-nickname").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/user/check-nickname").permitAll()
                         // /user/logout 포함 나머지는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(handling ->

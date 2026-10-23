@@ -28,7 +28,6 @@ import com.server.walwang_be.service.UserWithdrawalService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -104,14 +103,6 @@ public class UserController {
     @PostMapping("/reissue")
     public ResponseEntity<RefreshTokenResponse> reissue(@Valid @RequestBody TokenRequest request) {
         return toTokenResponse(userService.reissue(request.refreshToken()));
-    }
-
-    /** 중복 없으면 200, 중복이면 409. */
-    @GetMapping("/check-email")
-    public ResponseEntity<Void> checkEmail(@RequestParam @NotBlank @Email String email) {
-        return userService.isEmailTaken(email)
-                ? ResponseEntity.status(HttpStatus.CONFLICT).build()
-                : ResponseEntity.ok().build();
     }
 
     /** 중복 없으면 200, 중복이면 409. */

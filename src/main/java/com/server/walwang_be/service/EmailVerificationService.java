@@ -43,7 +43,7 @@ public class EmailVerificationService {
     /** 코드 하나에 허용하는 검증 시도. 다 쓰면 코드를 버린다. */
     static final int MAX_ATTEMPTS = 5;
 
-    /** 가입됨과 차단됨을 한 문장으로 답한다. check-email과 같은 이유다(UserService.isEmailTaken). */
+    /** 가입됨과 차단됨을 한 문장으로 답한다. 나눠서 알려주면 남의 주소 상태를 알아낼 수 있다. */
     static final String UNAVAILABLE_EMAIL = "가입할 수 없는 이메일입니다.";
 
     private static final SecureRandom RANDOM = new SecureRandom();

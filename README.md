@@ -76,13 +76,18 @@ blacklist:{sha256}     -> 1                 로그아웃된 access, TTL = 잔여
 
 | 메서드 | 경로 | 인증 | 설명 |
 |---|---|---|---|
-| POST | `/user/signUp` | - | 회원가입 + 약관 동의 저장 |
+| POST | `/user/email-verification/send` | - | 인증 코드 발송. 가입 불가 주소면 409, 한도 초과면 429, 발송 실패면 503 |
+| POST | `/user/email-verification/confirm` | - | 코드 확인 후 본문 `{verificationToken}`. 틀리거나 만료면 400 |
+| POST | `/user/signUp` | - | 회원가입 + 약관 동의 저장. 인증 토큰이 있어야 한다 |
 | POST | `/user/login` | - | 200 + `Authorization` 헤더 + `{refreshToken}` |
 | POST | `/user/reissue` | - | Access Token 재발급 |
-| GET | `/user/check-email` | - | 중복 없으면 200, 있으면 409 |
 | GET | `/user/check-nickname` | - | 중복 없으면 200, 있으면 409 |
 | POST | `/user/logout` | 필요 | |
 | PATCH | `/user/me` | 필요 | 회원 수정 |
+
+가입은 `email-verification/send` → `confirm` → `signUp` 순서다.
+`confirm`이 준 토큰을 `signUp` 본문의 `verificationToken`에 실어 보낸다 —
+없거나 다른 주소의 것이면 403이다.
 
 로그인/재발급/회원수정은 모두 같은 형태로 응답한다 —
 Access Token은 `Authorization: Bearer ...` 헤더, Refresh Token은 본문 `{refreshToken}`.

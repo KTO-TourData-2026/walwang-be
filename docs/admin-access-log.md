@@ -287,7 +287,7 @@ IP 주소 등으로 접속 권한을 제한하도록 한다.
 
 #### 재가입이 막히는 경로
 
-`UserService.signUp`과 `isEmailTaken`이 `WithdrawnEmailService.blocked(email)`을 본다.
+`UserService.signUp`과 `EmailVerificationService.sendCode`가 `WithdrawnEmailService.blocked(email)`을 본다.
 차단 목록은 `WithdrawalReason.blocksSignUp()`이 참인 사유뿐이라 `SELF` 행은 차단하지 않는다.
 응답은 "현재 가입할 수 없는 이메일입니다" 하나로, 이미 쓰는 주소인지 해지된 주소인지 구분해 알려주지 않는다 —
 나누면 아무나 남의 주소를 넣어보고 해지 사실을 알아낼 수 있다.

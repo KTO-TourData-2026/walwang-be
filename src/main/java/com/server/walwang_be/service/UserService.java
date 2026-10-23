@@ -204,17 +204,6 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    /**
-     * 이 주소로 가입할 수 있는지.
-     *
-     * 이미 쓰는 주소와 차단된 주소를 구분하지 않고 한 값으로 답한다 —
-     * 나눠서 알려주면 아무나 남의 주소를 넣어보고 상태를 알아낼 수 있다.
-     */
-    public boolean isEmailTaken(String email) {
-        return userRepository.existsByEmail(email) || withdrawnEmailService.blocked(email);
-    }
-
-    @Transactional(readOnly = true)
     public boolean isNicknameTaken(String nickname) {
         return userRepository.existsByNickname(nickname);
     }
